@@ -20,6 +20,14 @@ Env: `HEMORRHAGE_REPORTS_XLSX`, `HEMORRHAGE_REFERENCE_XLSX`, optional sheet name
 Reference column aliases: `Patient::Patientennummer` → `excel_pid`, `v_Operation_Datum` → `excel_opdat`.  
 Merge validation uses `(excel_pid, excel_opdat)` only (reference has no `opber_fallnr`).
 
+## Reference label analytics
+
+```bash
+python3 -m src.tasks.hemorrhage.analyze_reference_labels
+```
+
+Outputs under `data/inspection/reference_label_*.csv` — descriptive only, no NLP.
+
 **Outputs:** `data/inspection/` (CSVs + `inspection_summary.txt`)
 
 ## Phase 0 — Case build from CSV

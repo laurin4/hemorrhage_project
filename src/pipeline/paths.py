@@ -257,3 +257,10 @@ INSPECTION_UNMATCHED_REPORTS_PATH = INSPECTION_DIR / "unmatched_report_rows.csv"
 INSPECTION_DUPLICATE_LINKAGE_PATH = INSPECTION_DIR / "duplicate_linkage_cases.csv"
 INSPECTION_ANOMALY_REPORT_PATH = INSPECTION_DIR / "inspection_anomalies.txt"
 INSPECTION_SUMMARY_REPORT_PATH = INSPECTION_DIR / "inspection_summary.txt"
+
+# Reference label analytics (CCM DAVF spreadsheet)
+REFERENCE_LABEL_SUMMARY_PATH = INSPECTION_DIR / "reference_label_summary.csv"
+REFERENCE_LABEL_INCONSISTENCIES_PATH = INSPECTION_DIR / "reference_label_inconsistencies.csv"
+REFERENCE_VALUE_DISTRIBUTION_PATH = INSPECTION_DIR / "reference_value_distribution.csv"
+REFERENCE_KEYWORD_BY_LABEL_PATH = INSPECTION_DIR / "reference_keyword_by_label.csv"
+REFERENCE_LABEL_ANALYSIS_SUMMARY_PATH = INSPECTION_DIR / "reference_label_analysis_summary.txt"

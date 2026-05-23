@@ -100,6 +100,41 @@ KEYWORD_EXPLORATION_TERMS: Tuple[str, ...] = (
     "vaskulaer",
 )
 
+# Reference label columns (260507 CCM DAVF.xlsx — original header names for lookup)
+REFERENCE_LABEL_COLUMN_CANDIDATES: Dict[str, Tuple[str, ...]] = {
+    "haemorrhagisch": ("hämorrhagisch", "hamorrhagisch", "haemorrhagisch"),
+    "nicht_haemorrhagisch": ("nicht hämorrhagisch", "nicht hamorrhagisch", "nicht haemorrhagisch"),
+    "verify_vaskulaer": ("verify_vaskulär", "verify_vaskular", "verify vaskulär", "verify vaskular"),
+}
+
+REFERENCE_INDICATION_COLUMNS: Tuple[str, ...] = (
+    "Indikation 1",
+    "Indikation1_Korrigiert",
+    "Eingriff",
+)
+
+REFERENCE_LABEL_TEXT_COLUMNS: Tuple[str, ...] = REFERENCE_INDICATION_COLUMNS
+
+REFERENCE_KEYWORD_BY_LABEL_TERMS: Tuple[str, ...] = (
+    "cavernom",
+    "ccm",
+    "davf",
+    "blutung",
+    "einblutung",
+    "hämorrhag",
+    "haemorrhag",
+    "hemorrhag",
+    "hämosiderin",
+    "haemosiderin",
+    "vaskulär",
+    "vaskulaer",
+)
+
+# Spreadsheet yes-values (case-insensitive); descriptive only
+REFERENCE_LABEL_YES_VALUES: frozenset[str] = frozenset(
+    {"ja", "yes", "1", "true", "y", "x", "wahr"}
+)
+
 # Row identity within flat file (optional)
 SOURCE_ROW_ID_COLUMN_CANDIDATES: Tuple[str, ...] = (
     "source_report_row_id",
