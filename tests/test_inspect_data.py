@@ -46,16 +46,15 @@ def synthetic_raw_dir(tmp_path: Path) -> tuple[Path, Path]:
     reference = pd.DataFrame(
         [
             {
-                "excel_pid": "100",
-                "excel_opdat": "2024-01-10",
-                "opber_fallnr": "F1",
-                "reference_label": "1",
+                "Patient::Patientennummer": "100",
+                "v_Operation_Datum": "2024-01-10",
+                "Hämorrhagisch": 1,
+                "Nicht Hämorrhagisch": 0,
             },
             {
-                "excel_pid": "999",
-                "excel_opdat": "2024-03-03",
-                "opber_fallnr": "F9",
-                "reference_label": "0",
+                "Patient::Patientennummer": "999",
+                "v_Operation_Datum": "2024-03-03",
+                "Hämorrhagisch": 0,
             },
         ]
     )
@@ -88,6 +87,9 @@ def test_inspection_pipeline(synthetic_raw_dir, tmp_path: Path):
     assert (out_dir / "merge_validation.csv").exists()
     assert (out_dir / "keyword_exploration.csv").exists()
     assert (out_dir / "structured_case_samples.csv").exists()
+    merge = pd.read_csv(out_dir / "merge_validation.csv")
+    matched = int(merge.loc[merge["metric"] == "matched_link_keys", "value"].iloc[0])
+    assert matched >= 1
     assert (out_dir / "unmatched_reference_rows.csv").exists()
 
 

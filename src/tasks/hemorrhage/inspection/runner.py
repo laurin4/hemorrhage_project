@@ -53,7 +53,13 @@ from src.tasks.hemorrhage.inspection.text_analysis import (
     text_field_samples,
     text_field_statistics,
 )
+from src.tasks.hemorrhage.constants import (
+    CASE_KEY_ALIASES,
+    REFERENCE_KEY_ALIASES_EXTRA,
+    REFERENCE_REQUIRED_CANONICAL_KEYS,
+)
 from src.tasks.hemorrhage.io.column_normalize import normalize_dataframe_columns
+from src.tasks.hemorrhage.io.key_normalize import merge_reference_key_aliases
 from src.tasks.hemorrhage.io.excel_loader import ExcelLoadReport, load_excel_raw
 from src.tasks.hemorrhage.io.path_resolve import resolve_raw_input_path
 from src.tasks.hemorrhage.preprocessing.case_builder import build_cases_from_dataframe
@@ -132,7 +138,11 @@ def run_full_inspection(
         schema_parts.append(
             raw_schema_summary(reports_df, source_label="reports", load_report=result.reports_load)
         )
-        reports_df, map_rep = normalize_dataframe_columns(reports_df, source_label="reports")
+        reports_df, map_rep = normalize_dataframe_columns(
+            reports_df,
+            source_label="reports",
+            normalize_merge_keys=True,
+        )
         mapping_parts.append(map_rep.to_dataframe())
 
     if res_reference.resolution != "missing":
@@ -148,7 +158,14 @@ def run_full_inspection(
                 reference_df, source_label="reference", load_report=result.reference_load
             )
         )
-        reference_df, map_ref = normalize_dataframe_columns(reference_df, source_label="reference")
+        ref_aliases = merge_reference_key_aliases(CASE_KEY_ALIASES, REFERENCE_KEY_ALIASES_EXTRA)
+        reference_df, map_ref = normalize_dataframe_columns(
+            reference_df,
+            source_label="reference",
+            extra_aliases=ref_aliases,
+            required_case_keys=REFERENCE_REQUIRED_CANONICAL_KEYS,
+            normalize_merge_keys=True,
+        )
         mapping_parts.append(map_ref.to_dataframe())
 
     raw_schema_df = pd.concat(schema_parts, ignore_index=True) if schema_parts else pd.DataFrame()
@@ -213,11 +230,11 @@ def run_full_inspection(
         result.output_paths.append(p_merge)
 
         p_ur = out_dir / INSPECTION_UNMATCHED_REFERENCE_PATH.name
-        _write_csv(un_ref.drop(columns=["_case_key"], errors="ignore"), p_ur)
+        _write_csv(un_ref.drop(columns=["_link_key"], errors="ignore"), p_ur)
         result.output_paths.append(p_ur)
 
         p_up = out_dir / INSPECTION_UNMATCHED_REPORTS_PATH.name
-        _write_csv(un_rep.drop(columns=["_case_key"], errors="ignore"), p_up)
+        _write_csv(un_rep.drop(columns=["_link_key"], errors="ignore"), p_up)
         result.output_paths.append(p_up)
 
         p_dl = out_dir / INSPECTION_DUPLICATE_LINKAGE_PATH.name

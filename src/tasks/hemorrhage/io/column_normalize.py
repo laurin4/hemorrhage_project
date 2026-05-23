@@ -12,11 +12,13 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 import pandas as pd
 
-from src.tasks.hemorrhage.constants import CASE_KEY_ALIASES, TYPUS_ALIASES
+from src.tasks.hemorrhage.constants import CASE_KEY_ALIASES, CASE_KEY_COLUMNS, TYPUS_ALIASES
+from src.tasks.hemorrhage.io.key_normalize import (
+    apply_canonical_merge_key_normalization,
+    normalize_excel_pid_series,
+)
 
 LOGGER = logging.getLogger(__name__)
-
-CASE_KEY_COLUMNS = ("excel_pid", "excel_opdat", "opber_fallnr")
 
 
 @dataclass
@@ -52,32 +54,39 @@ def normalize_dataframe_columns(
     source_label: str,
     extra_aliases: Optional[Dict[str, Tuple[str, ...]]] = None,
     typus_aliases: Sequence[str] = TYPUS_ALIASES,
+    required_case_keys: Sequence[str] = CASE_KEY_COLUMNS,
+    normalize_merge_keys: bool = True,
 ) -> Tuple[pd.DataFrame, ColumnMappingReport]:
     """
     Rename columns to canonical names where aliases match.
 
-    Does not drop unmapped columns. Does not modify cell values except case-key
-    columns converted to string with ``astype(str)`` after strip (NaN preserved as empty).
+    Does not drop unmapped columns. Applies shared ``excel_pid`` / ``excel_opdat``
+    normalization when *normalize_merge_keys* is True.
     """
     report = ColumnMappingReport(source_label=source_label)
+    required = tuple(required_case_keys)
+
     if df.empty:
-        report.missing_canonical = list(CASE_KEY_COLUMNS)
+        report.missing_canonical = [k for k in required if k not in df.columns]
         return df.copy(), report
 
     lookup = _header_lookup(df.columns)
     rename_map: Dict[str, str] = {}
     targets_seen: Dict[str, str] = {}
 
-    all_aliases: Dict[str, Tuple[str, ...]] = dict(CASE_KEY_ALIASES)
+    all_aliases: Dict[str, Tuple[str, ...]] = {k: tuple(v) for k, v in CASE_KEY_ALIASES.items()}
     if extra_aliases:
-        all_aliases.update(extra_aliases)
+        for key, aliases in extra_aliases.items():
+            base = all_aliases.get(key, ())
+            all_aliases[key] = base + tuple(a for a in aliases if a not in base)
     all_aliases["typus"] = tuple(typus_aliases)
 
     for canonical, aliases in all_aliases.items():
         original = _resolve_alias(lookup, aliases)
         if original is None:
-            if canonical in CASE_KEY_COLUMNS or canonical == "typus":
-                report.missing_canonical.append(canonical)
+            if canonical in required or canonical == "typus":
+                if canonical not in report.missing_canonical:
+                    report.missing_canonical.append(canonical)
             report.mappings.append(
                 {
                     "original_column": "",
@@ -107,9 +116,11 @@ def normalize_dataframe_columns(
 
     out = df.rename(columns=rename_map).copy()
 
-    for key in CASE_KEY_COLUMNS:
-        if key in out.columns:
-            out[key] = _identifier_series_as_string(out[key], column=key, source_label=source_label)
+    if "opber_fallnr" in out.columns:
+        out["opber_fallnr"] = normalize_excel_pid_series(out["opber_fallnr"], source_label=f"{source_label}.opber_fallnr")
+
+    if normalize_merge_keys:
+        out = apply_canonical_merge_key_normalization(out, source_label=source_label)
 
     if "typus" in out.columns:
         out["typus"] = out["typus"].map(_cell_as_display_string)
@@ -123,34 +134,3 @@ def _cell_as_display_string(value: object) -> str:
     if isinstance(value, float) and value == int(value):
         return str(int(value))
     return str(value).strip()
-
-
-def _identifier_series_as_string(series: pd.Series, *, column: str, source_label: str) -> pd.Series:
-    """Stringify identifiers; log non-string dtypes and datetime conversions."""
-    if pd.api.types.is_datetime64_any_dtype(series):
-        LOGGER.warning(
-            "[%s] Column %s is datetime — converting to ISO date string (review for unintended coercion).",
-            source_label,
-            column,
-        )
-        return series.dt.strftime("%Y-%m-%d").fillna("")
-
-    non_null = series.dropna()
-    if len(non_null) and not pd.api.types.is_string_dtype(series):
-        sample = non_null.iloc[0]
-        LOGGER.info(
-            "[%s] Column %s dtype=%s — stringifying (sample=%r).",
-            source_label,
-            column,
-            series.dtype,
-            sample,
-        )
-
-    def _one(v: object) -> str:
-        if v is None or (isinstance(v, float) and pd.isna(v)):
-            return ""
-        if isinstance(v, float) and v == int(v):
-            return str(int(v))
-        return str(v).strip()
-
-    return series.map(_one)

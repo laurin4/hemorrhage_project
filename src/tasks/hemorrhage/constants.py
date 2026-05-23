@@ -11,6 +11,9 @@ from typing import Dict, Tuple
 # Case grouping keys (clinical case definition)
 CASE_KEY_COLUMNS: Tuple[str, str, str] = ("excel_pid", "excel_opdat", "opber_fallnr")
 
+# Reference ↔ reports linkage (CCM DAVF sheet has no opber_fallnr)
+MERGE_LINK_KEY_COLUMNS: Tuple[str, str] = ("excel_pid", "excel_opdat")
+
 # Canonical report typus codes (prefix "01", "02", "03")
 TYPUS_OPERATIONSBERICHT = "01"
 TYPUS_EINTRITTSBERICHT = "02"
@@ -67,6 +70,14 @@ CASE_KEY_ALIASES: Dict[str, Tuple[str, ...]] = {
         "op_fallnr",
     ),
 }
+
+# CCM DAVF reference sheet (260507) — merged with CASE_KEY_ALIASES when normalizing reference
+REFERENCE_KEY_ALIASES_EXTRA: Dict[str, Tuple[str, ...]] = {
+    "excel_pid": ("patient::patientennummer",),
+    "excel_opdat": ("v_operation_datum",),
+}
+
+REFERENCE_REQUIRED_CANONICAL_KEYS: Tuple[str, ...] = MERGE_LINK_KEY_COLUMNS
 
 TYPUS_ALIASES: Tuple[str, ...] = (
     "typus",
