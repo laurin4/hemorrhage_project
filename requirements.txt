@@ -1,0 +1,8 @@
+# Install with Python 3.9 or newer (see README / RUNBOOK).
+requests
+pandas
+numpy
+matplotlib
+seaborn
+scikit-learn
+openpyxl
