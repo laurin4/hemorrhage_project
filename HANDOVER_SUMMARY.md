@@ -1,6 +1,89 @@
 # Handover Summary
 
-## Project Purpose
+> **Active task:** Hemorrhage — **case-centric** architecture (Phase 0).  
+> **Full engineering doc:** `TECHNICAL_HANDOVER.md`  
+> **Delirium legacy pipeline:** still in repo but isolated — see `src/tasks/delirium/BOUNDARIES.md`.
+
+---
+
+## Hemorrhage project (current)
+
+### Purpose (target)
+
+Classify **hemorrhagic vs non-hemorrhagic** clinical **cases** from OP / Eintritts / Austritts reports using structured evidence + local LLM (later phases).
+
+### Case definition
+
+```text
+Case = (excel_pid, excel_opdat, opber_fallnr)
+```
+
+Reports per case (0–3 allowed):
+
+- `01` Operationsbericht
+- `02` Eintrittsbericht
+- `03` Austrittsbericht
+
+**Incomplete cases are expected** — the pipeline must not assume all three exist.
+
+### Phase 0 status (architecture only)
+
+| Done | Not yet |
+|------|---------|
+| `ClinicalCase` model, case_id, grouping | Hemorrhage prompts |
+| `case_builder` from flat CSV | Keyword extraction |
+| Case export schema (`clinical_cases.csv`) | Guardrails / inference |
+| Prefilter disabled by default | Manual labels / evaluation |
+| `src/core/` + `src/tasks/hemorrhage/` layout | Removal of delirium code |
+
+### Inspect real server data (Phase 0b — no NLP)
+
+```bash
+python3 -m src.tasks.hemorrhage.inspect_data
+```
+
+Raw Excel (configurable, under `data/raw/`):
+
+- `260507_CCM_DAVF.xlsx` — clinical reports (CCM DAVF)
+- `NCH_pidlist_opdat_ab_eb_op_SJO_pg_DRQ0001416.xlsx` — reference labels
+
+Outputs: `data/inspection/` (schema, cases, merge, keywords, samples)
+
+### Build cases from CSV (no NLP)
+
+```bash
+python3 -m src.tasks.hemorrhage.build_cases --input data/raw/reports.csv
+```
+
+Outputs:
+
+- `outputs/prepared/cases/clinical_cases.csv` — **one row = one case**
+- `outputs/prepared/cases/case_construction_report.txt`
+
+### Environment
+
+| Variable | Default | Role |
+|----------|---------|------|
+| `PROJECT_TASK` | `hemorrhage` | Task selector in `paths.py` |
+| `FLAT_REPORTS_INPUT_PATH` | `data/raw/reports.csv` | Flat report input |
+| `HEMORRHAGE_PREFILTER_MODE` | `disabled` | No delirium keyword auto-skip |
+
+### Delirium pipeline (legacy, unchanged)
+
+To run the original report-level delirium pipeline (unchanged code paths):
+
+```bash
+export PROJECT_TASK=delirium
+python3 -m src.pipeline.run_pipeline
+```
+
+---
+
+## Delirium legacy reference (report-centric)
+
+The sections below describe the **copied delirium pipeline** still present for reference and regression.
+
+## Project Purpose (delirium)
 - Detect ICU delirium from clinical diagnosis text using a 3-agent pipeline.
 - Compare model predictions against an operational structured baseline (ICD10 + ICDSC).
 - Provide reproducible validation, evaluation, and exploratory analysis outputs.

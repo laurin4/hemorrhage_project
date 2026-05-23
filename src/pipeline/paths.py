@@ -4,6 +4,9 @@ from pathlib import Path
 # Projektbasis
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
+# Active task: "hemorrhage" (case-centric) | "delirium" (legacy report-centric pipeline)
+PROJECT_TASK = os.environ.get("PROJECT_TASK", "hemorrhage").strip().lower()
+
 # Daten
 DATA_DIR = PROJECT_ROOT / "data"
 REAL_DATA_DIR = DATA_DIR
@@ -223,3 +226,34 @@ FIELD_SIGNAL_PLOTS_DIR = FIELD_SIGNAL_ANALYSIS_DIR / "plots"
 # Evidence snippets (interpretability export; does not change predictions)
 EVIDENCE_SNIPPETS_DIR = ANALYSIS_DIR / "evidence"
 EVIDENCE_SNIPPETS_TABLES_DIR = EVIDENCE_SNIPPETS_DIR / "tables"
+
+# --- Hemorrhage case-centric (Phase 0) ---
+# Flat report file: one row per report document (semicolon CSV).
+# Default: data/raw/reports.csv — override with FLAT_REPORTS_INPUT_PATH env.
+_FLAT_REPORTS_ENV = os.environ.get("FLAT_REPORTS_INPUT_PATH", "").strip()
+FLAT_REPORTS_INPUT_PATH = (
+    Path(_FLAT_REPORTS_ENV) if _FLAT_REPORTS_ENV else REAL_RAW_DIR / "reports.csv"
+)
+CASES_DIR = PREPARED_DATA_DIR / "cases"
+CASES_EXPORT_PATH = CASES_DIR / "clinical_cases.csv"
+CASES_CONSTRUCTION_REPORT_PATH = CASES_DIR / "case_construction_report.txt"
+CASE_PREDICTIONS_DIR = PREDICTIONS_DIR / "cases"
+CASE_PREDICTIONS_PATH = CASE_PREDICTIONS_DIR / "case_predictions.csv"
+
+# --- Hemorrhage real-data inspection (Excel under data/raw/) ---
+INSPECTION_DIR = DATA_DIR / "inspection"
+INSPECTION_RAW_SCHEMA_PATH = INSPECTION_DIR / "raw_schema_summary.csv"
+INSPECTION_COLUMN_MAPPING_PATH = INSPECTION_DIR / "column_mapping_detected.csv"
+INSPECTION_CASE_SUMMARY_PATH = INSPECTION_DIR / "case_summary.csv"
+INSPECTION_MERGE_VALIDATION_PATH = INSPECTION_DIR / "merge_validation.csv"
+INSPECTION_INCOMPLETE_CASES_PATH = INSPECTION_DIR / "incomplete_cases.csv"
+INSPECTION_DUPLICATE_CASES_PATH = INSPECTION_DIR / "duplicate_cases.csv"
+INSPECTION_REPORT_TYPE_DISTRIBUTION_PATH = INSPECTION_DIR / "report_type_distribution.csv"
+INSPECTION_TEXT_FIELD_STATISTICS_PATH = INSPECTION_DIR / "text_field_statistics.csv"
+INSPECTION_KEYWORD_EXPLORATION_PATH = INSPECTION_DIR / "keyword_exploration.csv"
+INSPECTION_STRUCTURED_CASE_SAMPLES_PATH = INSPECTION_DIR / "structured_case_samples.csv"
+INSPECTION_UNMATCHED_REFERENCE_PATH = INSPECTION_DIR / "unmatched_reference_rows.csv"
+INSPECTION_UNMATCHED_REPORTS_PATH = INSPECTION_DIR / "unmatched_report_rows.csv"
+INSPECTION_DUPLICATE_LINKAGE_PATH = INSPECTION_DIR / "duplicate_linkage_cases.csv"
+INSPECTION_ANOMALY_REPORT_PATH = INSPECTION_DIR / "inspection_anomalies.txt"
+INSPECTION_SUMMARY_REPORT_PATH = INSPECTION_DIR / "inspection_summary.txt"
