@@ -124,7 +124,7 @@ def run_full_inspection(
     if res_reports.resolution != "missing":
         reports_df, result.reports_load = load_excel_raw(
             res_reports.resolved_path,
-            source_label="reports_ccm_davf",
+            source_label="reports_nch_export",
             sheet_name=reports_sheet_name(),
         )
         if result.reports_load.errors:
@@ -138,7 +138,7 @@ def run_full_inspection(
     if res_reference.resolution != "missing":
         reference_df, result.reference_load = load_excel_raw(
             res_reference.resolved_path,
-            source_label="reference_pidlist",
+            source_label="reference_ccm_davf",
             sheet_name=reference_sheet_name(),
         )
         if result.reference_load.errors:

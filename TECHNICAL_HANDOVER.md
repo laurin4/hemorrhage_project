@@ -70,10 +70,10 @@ python3 -m src.tasks.hemorrhage.inspect_data
 
 | File | Default path |
 |------|----------------|
-| Reports (CCM DAVF) | `data/raw/260507_CCM_DAVF.xlsx` |
-| Reference pidlist | `data/raw/NCH_pidlist_opdat_ab_eb_op_SJO_pg_DRQ0001416.xlsx` |
+| Reports (clinical export) | `data/raw/NCH_pidlist_opdat_ab_eb_op_SJO_pg_DRQ0001416.xlsx` |
+| Reference / labels (CCM DAVF) | `data/raw/260507_CCM_DAVF.xlsx` |
 
-Alternate (logged, not renamed): `260507 CCM DAVF.xlsx`
+Alternate for reference (logged, not renamed): `260507 CCM DAVF.xlsx`
 
 **Outputs:** `data/inspection/` — `raw_schema_summary.csv`, `case_summary.csv`, `merge_validation.csv`, `incomplete_cases.csv`, `structured_case_samples.csv`, etc.
 

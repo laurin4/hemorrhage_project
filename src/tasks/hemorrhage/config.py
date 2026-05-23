@@ -13,16 +13,18 @@ from pathlib import Path
 from src.pipeline.paths import PROJECT_ROOT, REAL_RAW_DIR
 
 # Default on-disk names (underscore form; spaces allowed via alternates)
-DEFAULT_REPORTS_XLSX_FILENAME = "260507_CCM_DAVF.xlsx"
-DEFAULT_REFERENCE_XLSX_FILENAME = "NCH_pidlist_opdat_ab_eb_op_SJO_pg_DRQ0001416.xlsx"
+# REPORTS = clinical export (pidlist / OP-Eintritt-Austritt text)
+DEFAULT_REPORTS_XLSX_FILENAME = "NCH_pidlist_opdat_ab_eb_op_SJO_pg_DRQ0001416.xlsx"
+# REFERENCE = manual labels / verification (CCM DAVF cohort sheet)
+DEFAULT_REFERENCE_XLSX_FILENAME = "260507_CCM_DAVF.xlsx"
 
 # Alternate filenames if the configured path is missing (not a silent rename)
 REPORTS_XLSX_ALTERNATE_FILENAMES: tuple[str, ...] = (
-    "260507 CCM DAVF.xlsx",
     DEFAULT_REPORTS_XLSX_FILENAME,
 )
 
 REFERENCE_XLSX_ALTERNATE_FILENAMES: tuple[str, ...] = (
+    "260507 CCM DAVF.xlsx",
     DEFAULT_REFERENCE_XLSX_FILENAME,
 )
 
@@ -38,7 +40,7 @@ def _path_from_env_or_default(env_name: str, default: Path) -> Path:
 
 
 def configured_reports_xlsx_path() -> Path:
-    """Primary configured path for clinical report export (CCM DAVF)."""
+    """Primary configured path for clinical report export (NCH pidlist / Berichte export)."""
     return _path_from_env_or_default(
         "HEMORRHAGE_REPORTS_XLSX",
         REAL_RAW_DIR / DEFAULT_REPORTS_XLSX_FILENAME,
@@ -46,7 +48,7 @@ def configured_reports_xlsx_path() -> Path:
 
 
 def configured_reference_xlsx_path() -> Path:
-    """Primary configured path for reference / pidlist Excel."""
+    """Primary configured path for reference / manual labels (260507 CCM DAVF)."""
     return _path_from_env_or_default(
         "HEMORRHAGE_REFERENCE_XLSX",
         REAL_RAW_DIR / DEFAULT_REFERENCE_XLSX_FILENAME,

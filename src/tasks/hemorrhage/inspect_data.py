@@ -2,7 +2,7 @@
 CLI: load real hemorrhage Excel inputs, build cases, export inspection artifacts.
 
   python3 -m src.tasks.hemorrhage.inspect_data
-  python3 -m src.tasks.hemorrhage.inspect_data --reports data/raw/260507_CCM_DAVF.xlsx
+  python3 -m src.tasks.hemorrhage.inspect_data --reports data/raw/NCH_pidlist_opdat_ab_eb_op_SJO_pg_DRQ0001416.xlsx
 """
 
 from __future__ import annotations
@@ -23,8 +23,18 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Structural inspection of hemorrhage raw Excel data (no NLP)."
     )
-    parser.add_argument("--reports", type=Path, default=None, help="Clinical reports Excel (CCM DAVF)")
-    parser.add_argument("--reference", type=Path, default=None, help="Reference pidlist Excel")
+    parser.add_argument(
+        "--reports",
+        type=Path,
+        default=None,
+        help="Clinical reports Excel (default: NCH_pidlist_...xlsx)",
+    )
+    parser.add_argument(
+        "--reference",
+        type=Path,
+        default=None,
+        help="Reference / labels Excel (default: 260507_CCM_DAVF.xlsx)",
+    )
     parser.add_argument("--output-dir", type=Path, default=INSPECTION_DIR, help="Inspection output directory")
     args = parser.parse_args(argv)
 

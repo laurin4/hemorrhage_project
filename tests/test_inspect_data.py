@@ -59,8 +59,8 @@ def synthetic_raw_dir(tmp_path: Path) -> tuple[Path, Path]:
             },
         ]
     )
-    rep_path = tmp_path / "260507_CCM_DAVF.xlsx"
-    ref_path = tmp_path / "NCH_pidlist_opdat_ab_eb_op_SJO_pg_DRQ0001416.xlsx"
+    rep_path = tmp_path / "NCH_pidlist_opdat_ab_eb_op_SJO_pg_DRQ0001416.xlsx"
+    ref_path = tmp_path / "260507_CCM_DAVF.xlsx"
     reports.to_excel(rep_path, index=False)
     reference.to_excel(ref_path, index=False)
     return rep_path, ref_path

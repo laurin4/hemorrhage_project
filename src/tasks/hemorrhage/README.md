@@ -12,8 +12,8 @@ python3 -m src.tasks.hemorrhage.inspect_data
 
 | Role | Default filename |
 |------|------------------|
-| Clinical reports | `260507_CCM_DAVF.xlsx` |
-| Reference labels | `NCH_pidlist_opdat_ab_eb_op_SJO_pg_DRQ0001416.xlsx` |
+| Clinical reports | `NCH_pidlist_opdat_ab_eb_op_SJO_pg_DRQ0001416.xlsx` |
+| Reference / labels | `260507_CCM_DAVF.xlsx` (alt: `260507 CCM DAVF.xlsx`) |
 
 Env: `HEMORRHAGE_REPORTS_XLSX`, `HEMORRHAGE_REFERENCE_XLSX`, optional sheet names.
 

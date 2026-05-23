@@ -44,8 +44,8 @@ python3 -m src.tasks.hemorrhage.inspect_data
 
 Raw Excel (configurable, under `data/raw/`):
 
-- `260507_CCM_DAVF.xlsx` — clinical reports (CCM DAVF)
-- `NCH_pidlist_opdat_ab_eb_op_SJO_pg_DRQ0001416.xlsx` — reference labels
+- `NCH_pidlist_opdat_ab_eb_op_SJO_pg_DRQ0001416.xlsx` — clinical reports export
+- `260507_CCM_DAVF.xlsx` — reference / manual labels (CCM DAVF)
 
 Outputs: `data/inspection/` (schema, cases, merge, keywords, samples)
 
