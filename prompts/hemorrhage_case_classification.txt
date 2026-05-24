@@ -26,9 +26,29 @@ Klassifiziere als hämorrhagisch (klasse=1), wenn die Blutung:
 - Teil der aktuellen Präsentation war
 - Indikation/Grund für die aktuelle Aufnahme oder Operation war
 - durch die Operation behandelt wird (z.B. Hämatomevakuation, Extirpation/Evakuation von Blut/Hämatom)
-- im aktuellen Fallkontext beschrieben wird (z.B. «geblutetes Kavernom» als OP-Indikation)
+- klar als akut/subakut klinisch relevant beschrieben ist (nicht nur beschreibend)
 
 Klassifiziere NICHT automatisch als «nur historisch/nicht hämorrhagisch», allein weil die Blutung zeitlich vor dem OP-Eingriff stattfand.
+
+KAVERNOM / EINBLUTUNG — NICHT AUTOMATISCH HÄMORRHAGISCH (WICHTIG, vorläufig bis Supervisor-Rückmeldung):
+Eine Blutung oder Einblutung in einem Kavernom darf NICHT automatisch als hämorrhagischer Fall gewertet werden.
+
+Klassifiziere als hämorrhagisch (klasse=1) nur, wenn der Text klar anzeigt:
+- klinisch relevante akute/subakute Blutung
+- Blutung/Hämatom als Hauptgrund für die aktuelle Behandlung/Operation
+- Hämatomevakuation oder operative Behandlung eines akuten Hämatoms
+- Masseneffekt oder symptomatisches Blutungsereignis
+- aktuell relevanter intrakranieller Hämorrhagiekontext
+
+Klassifiziere als nicht hämorrhagisch (klasse=0), wenn:
+- «geblutetes Kavernom» nur beschreibend erwähnt wird (ohne akute Fallrelevanz)
+- Kavernomblutung chronisch/alt/zufällig beschrieben ist
+- kein aktuell klinisch relevantes hämorrhagisches Ereignis beschrieben ist
+- die Operation als elektive Resektion ohne akute Hämorrhagierelevanz erscheint
+
+Bei Kavernomblutung mit unklarer Relevanz:
+- bevorzuge klasse=0, sicherheit «mittel» oder «niedrig»
+- Unsicherheit in unsicherheitsgruende angeben
 
 NUR ECHTE FERNHISTORIE — NICHT AKTUELL FALLRELEVANT:
 Behandle Blutung nur als nicht aktuell fallrelevant (klasse=0), wenn klar erkennbar:
@@ -40,13 +60,16 @@ Behandle Blutung nur als nicht aktuell fallrelevant (klasse=0), wenn klar erkenn
 BEISPIELE (Orientierung, keine starren Regeln):
 
 → hämorrhagisch (klasse=1):
-- «geblutetes Kavernom» als OP-Indikation + «Hämatomevakuation» im Operationsbericht
-- «Einblutung» mit aktueller OP/Extirpation/Evakuation im behandelten Areal
-- Blutung/Hämatom war Grund für die aktuelle Operation, auch wenn die Blutung präoperativ stattfand
+- «akute Einblutung» / «symptomatische Blutung» mit Hämatomevakuation oder akuter OP-Indikation
+- «geblutetes Kavernom» + «Hämatomevakuation» / klare akute Fallrelevanz (nicht nur beschreibend)
+- Blutung/Hämatom war klarer Hauptgrund für die aktuelle Operation, auch wenn präoperativ
 
 → nicht hämorrhagisch (klasse=0):
+- «geblutetes Kavernom» nur beschreibend, ohne akute/subakute Relevanz oder Hämatomevakuation
+- «chronisch eingeblutetes Kavernom» ohne akute Hämorrhagierelevanz
 - «Blutung 1998» nur als ferne Vorgeschichte, ohne Bezug zur aktuellen Behandlung
 - «Status nach Blutung vor vielen Jahren» ohne dass die aktuelle OP/Behandlung damit zusammenhängt
+- elektive Kavernom-Resektion ohne beschriebenes akutes hämorrhagisches Ereignis
 
 JSON-FELDER BEI PRÄOPERATIVER FALLRELEVANTER BLUTUNG:
 - historische_blutung_erwaehnt = true (Blutung liegt zeitlich vor oder in der Anamnese)

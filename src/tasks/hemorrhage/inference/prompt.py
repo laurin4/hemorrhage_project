@@ -76,10 +76,14 @@ def prompt_preview(case: ClinicalCase, max_chars: int = PROMPT_PREVIEW_MAX_CHARS
 
 
 _FALLBACK_SYSTEM_PROMPT = """Du bist ein klinisches Entscheidungssystem für hämorrhagische vs. nicht-hämorrhagische Fälle.
-Präoperative Blutung kann hämorrhagisch sein, wenn sie Indikation/Grund der aktuellen OP war (z.B. geblutetes Kavernom, Hämatomevakuation).
+Präoperative Blutung kann hämorrhagisch sein, wenn sie klar Indikation/Grund der aktuellen OP war (z.B. Hämatomevakuation, akute symptomatische Blutung).
+Kavernomblutung/Einblutung ist NICHT automatisch hämorrhagisch — nur bei klarer akuter/subakuter klinischer Relevanz.
+Bei unklarer Kavernom-Relevanz: klasse=0, sicherheit mittel/niedrig, Unsicherheit angeben.
 Antworte ausschliesslich mit einem JSON-Objekt auf Deutsch (Feldinhalte), ohne Markdown.
 """
 
 _USER_PROMPT_REMINDER = """Erinnerung:
-- Präoperative Blutung, die Indikation/Grund der aktuellen Operation war (z.B. geblutetes Kavernom, Hämatomevakuation), ist hämorrhagisch — nicht «nur historisch».
-- Nur ferne Vorgeschichte ohne Bezug zur aktuellen Behandlung (z.B. Blutung 1998) ist nicht aktuell fallrelevant."""
+- Präoperative Blutung mit klarer akuter Fallrelevanz (z.B. Hämatomevakuation, akute symptomatische Blutung) ist hämorrhagisch — nicht «nur historisch».
+- «geblutetes Kavernom» allein ist NICHT automatisch hämorrhagisch; chronisch/beschreibend → nicht hämorrhagisch.
+- Nur ferne Vorgeschichte ohne Bezug zur aktuellen Behandlung (z.B. Blutung 1998) ist nicht aktuell fallrelevant.
+- Bei unklarer Kavernom-Relevanz: bevorzuge klasse=0 mit mittel/niedriger Sicherheit."""
