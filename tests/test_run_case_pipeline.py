@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from unittest.mock import patch
 
 import pandas as pd
 
@@ -69,6 +70,58 @@ def test_parse_failure():
     pred, err = parse_hemorrhage_response("not json at all", context="test")
     assert err is not None
     assert pred["klasse"] is None
+
+
+def test_parse_json_inside_markdown_fence():
+    payload = {
+        "klasse": 0,
+        "label": "nicht_hämorrhagisch",
+        "sicherheit": "hoch",
+        "begruendung": "Keine aktuelle Blutung.",
+        "evidenz": [],
+        "historische_blutung_erwaehnt": False,
+        "historische_blutung_als_aktuell_gewertet": False,
+        "unsicherheitsgruende": [],
+    }
+    raw = "```json\n" + json.dumps(payload, ensure_ascii=False) + "\n```"
+    pred, err = parse_hemorrhage_response(raw, context="test")
+    assert err is None
+    assert pred["klasse"] == 0
+
+
+def test_dry_run_does_not_invoke_parser(tmp_path: Path):
+    df = pd.DataFrame(
+        [
+            {
+                "excel_pid": "1",
+                "excel_opdat": "2024-01-01",
+                "opber_fallnr": "F1",
+                "typus": "01 Operationsbericht",
+                "diag": "Test",
+            }
+        ]
+    )
+    xlsx = tmp_path / "reports.xlsx"
+    df.to_excel(xlsx, index=False)
+    out = tmp_path / "preds.csv"
+
+    with patch(
+        "src.tasks.hemorrhage.inference.runner.parse_hemorrhage_response",
+        side_effect=AssertionError("parser must not run in dry-run"),
+    ):
+        result = run_hemorrhage_case_pipeline(
+            reports_path=xlsx,
+            output_path=out,
+            dry_run=True,
+        )
+    assert result.dry_run_count == 1
+
+
+def test_hemorrhage_inference_imports_resolve():
+    import src.tasks.hemorrhage.inference.llm_client  # noqa: F401
+    import src.tasks.hemorrhage.inference.parse  # noqa: F401
+    import src.tasks.hemorrhage.inference.runner  # noqa: F401
+    import src.tasks.hemorrhage.run_case_pipeline  # noqa: F401
 
 
 def test_dry_run_pipeline(tmp_path: Path):

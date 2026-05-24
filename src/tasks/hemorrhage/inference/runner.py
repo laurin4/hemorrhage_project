@@ -144,7 +144,7 @@ def process_single_case(
     raw = ""
     try:
         if llm_call is None:
-            from src.models.llm_interface import call_llm
+            from src.tasks.hemorrhage.inference.llm_client import call_llm
 
             llm_call = call_llm
         raw = llm_call(build_messages(case)) or ""
