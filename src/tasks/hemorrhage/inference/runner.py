@@ -200,6 +200,7 @@ def run_hemorrhage_case_pipeline(
     llm_call: Optional[Callable[[list], str]] = None,
 ) -> CasePipelineResult:
     out_path = output_path or HEMORRHAGE_CASE_PREDICTIONS_PATH
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     result = CasePipelineResult(output_path=out_path)
 
     cases, stats, reports_file, load_errors = load_clinical_cases(reports_path)
