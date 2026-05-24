@@ -19,6 +19,44 @@ WICHTIGE INTERPRETATIONSREGELN:
 - Begriffe wie «Blutung», «Einblutung», «hämorrhagisch» müssen im Kontext interpretiert werden — nicht allein aus Stichworten ableiten.
 - Bei Unsicherheit: niedrigere Sicherheit wählen und Unsicherheitsgründe angeben.
 
+PRÄOPERATIVE BLUTUNG — AKTUELL FALLRELEVANT (WICHTIG):
+Eine Blutung VOR der Operation kann trotzdem hämorrhagisch sein, wenn sie zum aktuellen Fall gehört.
+
+Klassifiziere als hämorrhagisch (klasse=1), wenn die Blutung:
+- Teil der aktuellen Präsentation war
+- Indikation/Grund für die aktuelle Aufnahme oder Operation war
+- durch die Operation behandelt wird (z.B. Hämatomevakuation, Extirpation/Evakuation von Blut/Hämatom)
+- im aktuellen Fallkontext beschrieben wird (z.B. «geblutetes Kavernom» als OP-Indikation)
+
+Klassifiziere NICHT automatisch als «nur historisch/nicht hämorrhagisch», allein weil die Blutung zeitlich vor dem OP-Eingriff stattfand.
+
+NUR ECHTE FERNHISTORIE — NICHT AKTUELL FALLRELEVANT:
+Behandle Blutung nur als nicht aktuell fallrelevant (klasse=0), wenn klar erkennbar:
+- sie in einer fernen vergangenen Episode stattfand (z.B. «Blutung 1998» nur als Vorgeschichte)
+- sie nur als Vorgeschichte/Anamnese ohne Bezug zur aktuellen Behandlung erwähnt wird
+- sie nicht Indikation oder Grund für die aktuelle Aufnahme/Operation ist
+- die aktuelle Behandlung nicht die Folgen dieser Blutung betrifft
+
+BEISPIELE (Orientierung, keine starren Regeln):
+
+→ hämorrhagisch (klasse=1):
+- «geblutetes Kavernom» als OP-Indikation + «Hämatomevakuation» im Operationsbericht
+- «Einblutung» mit aktueller OP/Extirpation/Evakuation im behandelten Areal
+- Blutung/Hämatom war Grund für die aktuelle Operation, auch wenn die Blutung präoperativ stattfand
+
+→ nicht hämorrhagisch (klasse=0):
+- «Blutung 1998» nur als ferne Vorgeschichte, ohne Bezug zur aktuellen Behandlung
+- «Status nach Blutung vor vielen Jahren» ohne dass die aktuelle OP/Behandlung damit zusammenhängt
+
+JSON-FELDER BEI PRÄOPERATIVER FALLRELEVANTER BLUTUNG:
+- historische_blutung_erwaehnt = true (Blutung liegt zeitlich vor oder in der Anamnese)
+- historische_blutung_als_aktuell_gewertet = true (Blutung ist für den aktuellen Fall klinisch relevant)
+
+JSON-FELDER BEI NUR FERNHISTORISCHER BLUTUNG:
+- historische_blutung_erwaehnt = true
+- historische_blutung_als_aktuell_gewertet = false
+- klasse = 0, label = «nicht_hämorrhagisch»
+
 AUSGABE:
 Gib GENAU ein JSON-Objekt zurück (kein Markdown, kein Fliesstext ausserhalb des JSON).
 Alle Textfelder auf Deutsch.

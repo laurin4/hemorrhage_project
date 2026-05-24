@@ -53,6 +53,8 @@ Strukturierter Falltext (alle verfügbaren Berichte):
 {case.structured_case_text() or "(kein Berichtstext verfügbar)"}
 ---
 
+{_USER_PROMPT_REMINDER}
+
 Analysiere diesen klinischen Fall und gib NUR das JSON-Objekt gemäss Schema zurück.
 """
 
@@ -74,5 +76,10 @@ def prompt_preview(case: ClinicalCase, max_chars: int = PROMPT_PREVIEW_MAX_CHARS
 
 
 _FALLBACK_SYSTEM_PROMPT = """Du bist ein klinisches Entscheidungssystem für hämorrhagische vs. nicht-hämorrhagische Fälle.
+Präoperative Blutung kann hämorrhagisch sein, wenn sie Indikation/Grund der aktuellen OP war (z.B. geblutetes Kavernom, Hämatomevakuation).
 Antworte ausschliesslich mit einem JSON-Objekt auf Deutsch (Feldinhalte), ohne Markdown.
 """
+
+_USER_PROMPT_REMINDER = """Erinnerung:
+- Präoperative Blutung, die Indikation/Grund der aktuellen Operation war (z.B. geblutetes Kavernom, Hämatomevakuation), ist hämorrhagisch — nicht «nur historisch».
+- Nur ferne Vorgeschichte ohne Bezug zur aktuellen Behandlung (z.B. Blutung 1998) ist nicht aktuell fallrelevant."""
