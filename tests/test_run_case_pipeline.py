@@ -61,15 +61,15 @@ def test_parse_success():
         },
         ensure_ascii=False,
     )
-    pred, err = parse_hemorrhage_response(raw, context="test")
-    assert err is None
-    assert pred["klasse"] == 1
+    result = parse_hemorrhage_response(raw, context="test")
+    assert result.success
+    assert result.prediction["klasse"] == 1
 
 
 def test_parse_failure():
-    pred, err = parse_hemorrhage_response("not json at all", context="test")
-    assert err is not None
-    assert pred["klasse"] is None
+    result = parse_hemorrhage_response("not json at all", context="test")
+    assert not result.success
+    assert result.prediction["klasse"] is None
 
 
 def test_parse_json_inside_markdown_fence():
@@ -84,9 +84,9 @@ def test_parse_json_inside_markdown_fence():
         "unsicherheitsgruende": [],
     }
     raw = "```json\n" + json.dumps(payload, ensure_ascii=False) + "\n```"
-    pred, err = parse_hemorrhage_response(raw, context="test")
-    assert err is None
-    assert pred["klasse"] == 0
+    result = parse_hemorrhage_response(raw, context="test")
+    assert result.success
+    assert result.prediction["klasse"] == 0
 
 
 def test_dry_run_does_not_invoke_parser(tmp_path: Path):

@@ -10,7 +10,10 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
 from src.core.case.models import ClinicalCase
-from src.pipeline.paths import HEMORRHAGE_CASE_PREDICTIONS_PATH
+from src.pipeline.paths import (
+    HEMORRHAGE_CASE_PREDICTIONS_PATH,
+    HEMORRHAGE_PARSE_FAILURES_PATH,
+)
 from src.tasks.hemorrhage.constants import (
     TYPUS_AUSTRITTSBERICHT,
     TYPUS_EINTRITTSBERICHT,
@@ -27,10 +30,20 @@ from src.tasks.hemorrhage.inference.parse import (
     evidenz_to_json,
     list_to_json,
     parse_hemorrhage_response,
+    preview_snippet,
 )
 from src.tasks.hemorrhage.inference.prompt import build_messages, prompt_preview
 
 LOGGER = logging.getLogger(__name__)
+
+PARSE_FAILURES_CSV_COLUMNS: List[str] = [
+    "case_id",
+    "raw_llm_response",
+    "parse_error_reason",
+    "parse_error_detail",
+    "first_500_chars",
+    "last_500_chars",
+]
 
 PREDICTION_CSV_COLUMNS: List[str] = [
     "case_id",
@@ -55,6 +68,8 @@ PREDICTION_CSV_COLUMNS: List[str] = [
     "raw_llm_response",
     "prompt_preview",
     "error_message",
+    "parse_error_reason",
+    "parse_error_detail",
     "reference_haemorrhagisch",
     "reference_nicht_haemorrhagisch",
     "reference_verify_vaskulaer",
@@ -104,6 +119,8 @@ def _base_row(case: ClinicalCase, ref_lookup: ReferenceLookup) -> Dict[str, Any]
         "raw_llm_response": "",
         "prompt_preview": "",
         "error_message": "",
+        "parse_error_reason": "",
+        "parse_error_detail": "",
         **ref,
     }
 
@@ -155,14 +172,16 @@ def process_single_case(
         LOGGER.exception("LLM failed case_id=%s", case.case_id)
         return row
 
-    pred, err = parse_hemorrhage_response(raw, context=f"hemorrhage_case:{case.case_id}")
-    _apply_prediction(row, pred)
+    parse_result = parse_hemorrhage_response(raw, context=f"hemorrhage_case:{case.case_id}")
+    _apply_prediction(row, parse_result.prediction)
+    row["parse_error_reason"] = parse_result.parse_error_reason
+    row["parse_error_detail"] = parse_result.parse_error_detail
 
-    if err:
-        row["status"] = "parse_failed"
-        row["error_message"] = err
-    else:
+    if parse_result.success:
         row["status"] = "success"
+    else:
+        row["status"] = "parse_failed"
+        row["error_message"] = parse_result.error_message
 
     return row
 
@@ -180,6 +199,30 @@ def run_case_inference(
             process_single_case(case, ref_lookup, dry_run=dry_run, llm_call=llm_call)
         )
     return rows
+
+
+def write_parse_failures_csv(rows: List[Dict[str, Any]], output_path: Path) -> None:
+    failures = [
+        {
+            "case_id": r.get("case_id", ""),
+            "raw_llm_response": r.get("raw_llm_response", ""),
+            "parse_error_reason": r.get("parse_error_reason", ""),
+            "parse_error_detail": r.get("parse_error_detail", ""),
+            "first_500_chars": preview_snippet(r.get("raw_llm_response", ""), 500),
+            "last_500_chars": (
+                str(r.get("raw_llm_response", ""))[-500:]
+                if r.get("raw_llm_response")
+                else ""
+            ),
+        }
+        for r in rows
+        if r.get("status") == "parse_failed"
+    ]
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=PARSE_FAILURES_CSV_COLUMNS, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(failures)
 
 
 def write_predictions_csv(rows: List[Dict[str, Any]], output_path: Path) -> None:
@@ -266,6 +309,7 @@ def run_hemorrhage_case_pipeline(
             result.parse_failed_count += 1
 
     write_predictions_csv(rows, out_path)
+    write_parse_failures_csv(rows, HEMORRHAGE_PARSE_FAILURES_PATH)
     result.cases_processed = len(rows)
 
     result.summary_lines = [
@@ -279,6 +323,7 @@ def run_hemorrhage_case_pipeline(
         f"llm_failed={result.llm_failed_count}",
         f"dry_run_rows={result.dry_run_count}",
         f"output={out_path}",
+        f"parse_failures_debug={HEMORRHAGE_PARSE_FAILURES_PATH}",
         f"input_rows={stats.input_rows}",
         f"cases_incomplete={stats.cases_incomplete}",
     ]

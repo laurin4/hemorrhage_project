@@ -83,11 +83,11 @@ def test_example_response_preoperative_kavernom_class_1():
         },
         ensure_ascii=False,
     )
-    pred, err = parse_hemorrhage_response(raw, context="test_preop_kavernom")
-    assert err is None
-    assert pred["klasse"] == 1
-    assert pred["historische_blutung_erwaehnt"] is True
-    assert pred["historische_blutung_als_aktuell_gewertet"] is True
+    result = parse_hemorrhage_response(raw, context="test_preop_kavernom")
+    assert result.success
+    assert result.prediction["klasse"] == 1
+    assert result.prediction["historische_blutung_erwaehnt"] is True
+    assert result.prediction["historische_blutung_als_aktuell_gewertet"] is True
 
 
 def test_example_response_remote_history_class_0():
@@ -105,11 +105,11 @@ def test_example_response_remote_history_class_0():
         },
         ensure_ascii=False,
     )
-    pred, err = parse_hemorrhage_response(raw, context="test_remote_history")
-    assert err is None
-    assert pred["klasse"] == 0
-    assert pred["historische_blutung_erwaehnt"] is True
-    assert pred["historische_blutung_als_aktuell_gewertet"] is False
+    result = parse_hemorrhage_response(raw, context="test_remote_history")
+    assert result.success
+    assert result.prediction["klasse"] == 0
+    assert result.prediction["historische_blutung_erwaehnt"] is True
+    assert result.prediction["historische_blutung_als_aktuell_gewertet"] is False
 
 
 def test_build_messages_includes_updated_system_prompt():

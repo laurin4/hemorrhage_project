@@ -273,3 +273,4 @@ HEMORRHAGE_CONFUSION_REVIEW_PATH = DATA_OUTPUTS_DIR / "hemorrhage_confusion_revi
 HEMORRHAGE_PREDICTION_REVIEW_SUMMARY_PATH = (
     DATA_OUTPUTS_DIR / "hemorrhage_prediction_review_summary.txt"
 )
+HEMORRHAGE_PARSE_FAILURES_PATH = DATA_OUTPUTS_DIR / "hemorrhage_parse_failures.csv"
