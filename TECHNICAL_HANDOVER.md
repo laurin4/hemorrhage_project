@@ -73,6 +73,20 @@ python3 -m src.tasks.hemorrhage.run_case_pipeline
 - One case = one LLM call = one prediction row
 - No keyword prefilter; delirium `run_pipeline.py` unchanged
 
+### Phase 1b — Preliminary evaluation (IMPLEMENTED)
+
+```bash
+python3 -m src.tasks.hemorrhage.build_prediction_review
+python3 -m src.tasks.hemorrhage.evaluate_predictions
+```
+
+- Entry: `src/tasks/hemorrhage/evaluate_predictions.py`
+- Core logic: `src/tasks/hemorrhage/export/evaluate_predictions.py`
+- Inputs: `data/outputs/hemorrhage_prediction_review.csv`, `hemorrhage_confusion_review.csv`
+- Outputs: `data/evaluation/` (metrics summary, confusion matrix, error cases, `plots/*.png`)
+- **Preliminary evaluation on labeled subset** — NOT final validation; Verify_Vaskulär-only cases excluded from default metrics
+- Optional sensitivity: `--include-verify-as-negative` treats verify_only as non_hemorrhagic
+
 See **HANDOVER_SUMMARY.md** → “How to run on the server” for full copy-paste workflow.
 
 ### Phase 0b — Real Excel inspection (IMPLEMENTED)

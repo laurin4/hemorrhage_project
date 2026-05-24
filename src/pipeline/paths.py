@@ -274,3 +274,22 @@ HEMORRHAGE_PREDICTION_REVIEW_SUMMARY_PATH = (
     DATA_OUTPUTS_DIR / "hemorrhage_prediction_review_summary.txt"
 )
 HEMORRHAGE_PARSE_FAILURES_PATH = DATA_OUTPUTS_DIR / "hemorrhage_parse_failures.csv"
+
+# Hemorrhage preliminary evaluation (labeled subset)
+HEMORRHAGE_EVALUATION_DIR = DATA_DIR / "evaluation"
+HEMORRHAGE_EVALUATION_PLOTS_DIR = HEMORRHAGE_EVALUATION_DIR / "plots"
+HEMORRHAGE_METRICS_SUMMARY_CSV_PATH = HEMORRHAGE_EVALUATION_DIR / "hemorrhage_metrics_summary.csv"
+HEMORRHAGE_METRICS_SUMMARY_TXT_PATH = HEMORRHAGE_EVALUATION_DIR / "hemorrhage_metrics_summary.txt"
+HEMORRHAGE_EVAL_CONFUSION_MATRIX_PATH = (
+    HEMORRHAGE_EVALUATION_DIR / "hemorrhage_confusion_matrix.csv"
+)
+HEMORRHAGE_ERROR_CASES_PATH = HEMORRHAGE_EVALUATION_DIR / "hemorrhage_error_cases.csv"
+HEMORRHAGE_METRICS_SUMMARY_VERIFY_AS_NEGATIVE_CSV_PATH = (
+    HEMORRHAGE_EVALUATION_DIR / "hemorrhage_metrics_summary_verify_as_negative.csv"
+)
+HEMORRHAGE_METRICS_SUMMARY_VERIFY_AS_NEGATIVE_TXT_PATH = (
+    HEMORRHAGE_EVALUATION_DIR / "hemorrhage_metrics_summary_verify_as_negative.txt"
+)
+HEMORRHAGE_EVAL_CONFUSION_MATRIX_VERIFY_AS_NEGATIVE_PATH = (
+    HEMORRHAGE_EVALUATION_DIR / "hemorrhage_confusion_matrix_verify_as_negative.csv"
+)

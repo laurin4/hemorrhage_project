@@ -43,6 +43,34 @@ Summary: `data/outputs/hemorrhage_prediction_review_summary.txt`
 
 ---
 
+## Preliminary evaluation (quantitative metrics + plots)
+
+After full inference and review export:
+
+```bash
+python3 -m src.tasks.hemorrhage.evaluate_predictions
+python3 -m src.tasks.hemorrhage.evaluate_predictions --include-verify-as-negative
+```
+
+**Outputs** (`data/evaluation/`):
+
+- `hemorrhage_metrics_summary.csv` / `.txt` — counts + binary metrics on labeled subset
+- `hemorrhage_confusion_matrix.csv` — aggregated confusion matrix
+- `hemorrhage_error_cases.csv` — FP/FN and labeled pipeline failures
+- `plots/` — confusion matrix, distributions, confidence by correctness
+
+**Methodology:** Preliminary evaluation on labeled subset only. Verify_Vaskulär-only cases are **excluded** from default performance metrics (conservative). Use `--include-verify-as-negative` for exploratory sensitivity analysis.
+
+Inspect:
+
+```bash
+cat data/evaluation/hemorrhage_metrics_summary.txt
+cat data/evaluation/hemorrhage_confusion_matrix.csv
+ls -lh data/evaluation/plots/
+```
+
+---
+
 ## Phase 1 — Case-level inference (prototype)
 
 ```bash

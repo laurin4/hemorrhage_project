@@ -69,6 +69,12 @@ python3 -m src.tasks.hemorrhage.run_case_pipeline --limit 5
 
 # 6. Full case inference
 python3 -m src.tasks.hemorrhage.run_case_pipeline
+
+# 7. Build review exports
+python3 -m src.tasks.hemorrhage.build_prediction_review
+
+# 8. Preliminary evaluation (metrics + plots)
+python3 -m src.tasks.hemorrhage.evaluate_predictions
 ```
 
 Expected outputs:
@@ -76,6 +82,7 @@ Expected outputs:
 - `data/inspection/` — schema, merge, label analytics
 - `data/outputs/hemorrhage_case_predictions.csv` — case predictions
 - `data/outputs/hemorrhage_prediction_review.csv` — unified qualitative review table
+- `data/evaluation/` — preliminary metrics, confusion matrix, plots
 
 ### Prediction review export (main qualitative artifact)
 
@@ -87,14 +94,24 @@ python3 -m src.tasks.hemorrhage.build_prediction_review --only-labeled --limit 2
 
 Preliminary comparison only — **not final evaluation**. Summary: `data/outputs/hemorrhage_prediction_review_summary.txt`
 
+### Preliminary evaluation (metrics + plots)
+
+```bash
+python3 -m src.tasks.hemorrhage.evaluate_predictions
+python3 -m src.tasks.hemorrhage.evaluate_predictions --include-verify-as-negative
+```
+
+Outputs: `data/evaluation/` (metrics summary, confusion matrix, error cases, plots).  
+Verify_Vaskulär-only cases excluded from default metrics until label meaning is clarified.
+
 ### Phase 0 status
 
 | Done | Not yet |
 |------|---------|
 | `ClinicalCase` model, case_id, grouping | Keyword prefilter |
-| `case_builder`, inspection, reference analytics | Final evaluation metrics |
+| `case_builder`, inspection, reference analytics | Final validation (Verify_Vaskulär TBD) |
 | Case-level LLM prototype (`run_case_pipeline`) | Guardrails |
-| Prefilter disabled by default | Removal of delirium code |
+| Prediction review + preliminary evaluation (`evaluate_predictions`) | Removal of delirium code |
 
 ### Inspect real server data (Phase 0b — no NLP)
 
