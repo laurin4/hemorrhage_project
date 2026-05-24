@@ -209,6 +209,7 @@ def test_output_files_created(tmp_path: Path):
 
     assert (out_dir / "hemorrhage_metrics_summary.csv").exists()
     assert (out_dir / "hemorrhage_metrics_summary.txt").exists()
+    assert (out_dir / "hemorrhage_metrics_summary.md").exists()
     assert (out_dir / "hemorrhage_confusion_matrix.csv").exists()
     assert (out_dir / "hemorrhage_error_cases.csv").exists()
     assert (out_dir / "plots" / "confusion_matrix.png").exists()
@@ -216,8 +217,15 @@ def test_output_files_created(tmp_path: Path):
     assert (out_dir / "hemorrhage_metrics_summary_verify_as_negative.csv").exists()
 
     summary = (out_dir / "hemorrhage_metrics_summary.txt").read_text(encoding="utf-8")
-    assert "preliminary evaluation on labeled subset" in summary
-    assert "Verify_Vaskulär-only cases excluded" in summary
+    assert "Hemorrhage Preliminary Evaluation" in summary
+    assert "Dataset overview" in summary
+    assert "Performance metrics" in summary
+    assert "Accuracy:" in summary and "%" in summary
+    assert "Interpretation" in summary
+    assert "FN detailed review" in summary
+    md = (out_dir / "hemorrhage_metrics_summary.md").read_text(encoding="utf-8")
+    assert "# Hemorrhage Preliminary Evaluation" in md
+    assert "| TP |" in md or "(TP)" in md
 
     errors = pd.read_csv(out_dir / "hemorrhage_error_cases.csv")
     assert set(errors["prediction_vs_reference"]) <= {"FP", "FN", "prediction_missing"}

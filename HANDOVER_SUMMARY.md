@@ -106,7 +106,7 @@ python3 -m src.tasks.hemorrhage.evaluate_predictions
 python3 -m src.tasks.hemorrhage.evaluate_predictions --include-verify-as-negative
 ```
 
-Outputs: `data/evaluation/` (metrics summary, confusion matrix, error cases, plots).  
+Outputs: `data/evaluation/` — `hemorrhage_metrics_summary.csv` (raw), `.txt` + `.md` (readable reports), confusion matrix, error cases, plots.  
 Verify_Vaskulär-only cases excluded from default metrics until label meaning is clarified.
 
 ### Phase 0 status

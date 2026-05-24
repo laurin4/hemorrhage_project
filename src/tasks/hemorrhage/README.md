@@ -67,7 +67,8 @@ python3 -m src.tasks.hemorrhage.evaluate_predictions --include-verify-as-negativ
 
 **Outputs** (`data/evaluation/`):
 
-- `hemorrhage_metrics_summary.csv` / `.txt` — counts + binary metrics on labeled subset
+- `hemorrhage_metrics_summary.csv` — machine-readable metrics (raw floats)
+- `hemorrhage_metrics_summary.txt` / `.md` — human-readable reports for meetings / thesis notes
 - `hemorrhage_confusion_matrix.csv` — aggregated confusion matrix
 - `hemorrhage_error_cases.csv` — FP/FN and labeled pipeline failures
 - `plots/` — confusion matrix, distributions, confidence by correctness

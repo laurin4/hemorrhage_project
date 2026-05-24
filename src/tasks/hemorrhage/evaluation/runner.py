@@ -17,7 +17,14 @@ import pandas as pd
 from src.pipeline.paths import (
     HEMORRHAGE_CONFUSION_REVIEW_PATH,
     HEMORRHAGE_EVALUATION_DIR,
+    HEMORRHAGE_FALSE_NEGATIVE_REVIEW_PATH,
+    HEMORRHAGE_FALSE_POSITIVE_REVIEW_PATH,
     HEMORRHAGE_PREDICTION_REVIEW_PATH,
+)
+from src.tasks.hemorrhage.evaluation.report_format import (
+    EvaluationReportPaths,
+    build_readable_reports,
+    format_pct,
 )
 from src.tasks.hemorrhage.export.prediction_review import compute_prediction_vs_reference
 
@@ -70,6 +77,7 @@ class EvaluationResult:
     plots_dir: Path
     metrics_csv_path: Path
     metrics_txt_path: Path
+    metrics_md_path: Path
     confusion_matrix_path: Path
     error_cases_path: Path
     summary_lines: List[str] = field(default_factory=list)
@@ -318,6 +326,73 @@ def _format_metric_value(value: Any) -> str:
     if isinstance(value, float):
         return f"{value:.6f}"
     return str(value)
+
+
+def _report_paths(
+    out_dir: Path,
+    *,
+    review_path: Path,
+    confusion_path: Path,
+) -> EvaluationReportPaths:
+    return EvaluationReportPaths(
+        review_csv=review_path,
+        confusion_review_csv=confusion_path,
+        false_negative_review_csv=HEMORRHAGE_FALSE_NEGATIVE_REVIEW_PATH,
+        false_positive_review_csv=HEMORRHAGE_FALSE_POSITIVE_REVIEW_PATH,
+        metrics_csv=out_dir / "hemorrhage_metrics_summary.csv",
+        confusion_matrix_csv=out_dir / "hemorrhage_confusion_matrix.csv",
+        error_cases_csv=out_dir / "hemorrhage_error_cases.csv",
+        plots_dir=out_dir / "plots",
+    )
+
+
+def _write_readable_reports(
+    metrics: Dict[str, Any],
+    paths: EvaluationReportPaths,
+    txt_path: Path,
+    md_path: Path,
+    *,
+    include_verify_as_negative: bool = False,
+) -> None:
+    txt_report, md_report = build_readable_reports(
+        metrics,
+        paths,
+        include_verify_as_negative=include_verify_as_negative,
+    )
+    txt_path.write_text(txt_report, encoding="utf-8")
+    md_path.write_text(md_report, encoding="utf-8")
+
+
+def build_console_summary_lines(
+    metrics: Dict[str, Any],
+    *,
+    txt_path: Path,
+    md_path: Path,
+    include_verify_as_negative: bool = False,
+) -> List[str]:
+    """Short terminal summary pointing to full readable reports."""
+    mode = "sensitivity" if include_verify_as_negative else "default"
+    return [
+        f"Hemorrhage evaluation ({mode}) — preliminary evaluation on labeled subset",
+        f"evaluated_cases={_metric_int(metrics, 'evaluated_cases')} "
+        f"TP={_metric_int(metrics, 'TP')} TN={_metric_int(metrics, 'TN')} "
+        f"FP={_metric_int(metrics, 'FP')} FN={_metric_int(metrics, 'FN')}",
+        f"accuracy={format_pct(metrics.get('accuracy'))} "
+        f"sensitivity={format_pct(metrics.get('sensitivity'))} "
+        f"F1={format_pct(metrics.get('F1'))}",
+        f"readable_txt={txt_path}",
+        f"readable_md={md_path}",
+    ]
+
+
+def _metric_int(metrics: Dict[str, Any], key: str) -> int:
+    val = metrics.get(key)
+    if val is None:
+        return 0
+    try:
+        return int(val)
+    except (TypeError, ValueError):
+        return 0
 
 
 def build_summary_lines(
@@ -604,11 +679,14 @@ def run_evaluate_predictions(
     out_dir = output_dir or HEMORRHAGE_EVALUATION_DIR
     plots_dir = out_dir / "plots"
 
+    metrics_txt = out_dir / "hemorrhage_metrics_summary.txt"
+    metrics_md = out_dir / "hemorrhage_metrics_summary.md"
     result = EvaluationResult(
         output_dir=out_dir,
         plots_dir=plots_dir,
         metrics_csv_path=out_dir / "hemorrhage_metrics_summary.csv",
-        metrics_txt_path=out_dir / "hemorrhage_metrics_summary.txt",
+        metrics_txt_path=metrics_txt,
+        metrics_md_path=metrics_md,
         confusion_matrix_path=out_dir / "hemorrhage_confusion_matrix.csv",
         error_cases_path=out_dir / "hemorrhage_error_cases.csv",
     )
@@ -634,11 +712,21 @@ def run_evaluate_predictions(
     plots_dir.mkdir(parents=True, exist_ok=True)
 
     metrics = build_metrics_record(review_df, include_verify_as_negative=False)
-    summary_lines = build_summary_lines(metrics, include_verify_as_negative=False)
-    result.summary_lines = summary_lines
+    report_paths = _report_paths(out_dir, review_path=rev_path, confusion_path=conf_path)
+    _write_readable_reports(
+        metrics,
+        report_paths,
+        result.metrics_txt_path,
+        result.metrics_md_path,
+        include_verify_as_negative=False,
+    )
+    result.summary_lines = build_console_summary_lines(
+        metrics,
+        txt_path=result.metrics_txt_path,
+        md_path=result.metrics_md_path,
+    )
 
     pd.DataFrame([metrics]).to_csv(result.metrics_csv_path, index=False, encoding="utf-8")
-    result.metrics_txt_path.write_text("\n".join(summary_lines) + "\n", encoding="utf-8")
 
     confusion_rows = build_confusion_matrix_rows(review_df, include_verify_as_negative=False)
     pd.DataFrame(confusion_rows, columns=CONFUSION_MATRIX_COLUMNS).to_csv(
@@ -659,15 +747,26 @@ def run_evaluate_predictions(
 
     if include_verify_as_negative:
         sens_metrics = build_metrics_record(review_df, include_verify_as_negative=True)
-        sens_lines = build_summary_lines(sens_metrics, include_verify_as_negative=True)
-        result.sensitivity_summary_lines = sens_lines
-
         sens_csv = out_dir / "hemorrhage_metrics_summary_verify_as_negative.csv"
         sens_txt = out_dir / "hemorrhage_metrics_summary_verify_as_negative.txt"
+        sens_md = out_dir / "hemorrhage_metrics_summary_verify_as_negative.md"
         sens_conf = out_dir / "hemorrhage_confusion_matrix_verify_as_negative.csv"
 
+        _write_readable_reports(
+            sens_metrics,
+            report_paths,
+            sens_txt,
+            sens_md,
+            include_verify_as_negative=True,
+        )
+        result.sensitivity_summary_lines = build_console_summary_lines(
+            sens_metrics,
+            txt_path=sens_txt,
+            md_path=sens_md,
+            include_verify_as_negative=True,
+        )
+
         pd.DataFrame([sens_metrics]).to_csv(sens_csv, index=False, encoding="utf-8")
-        sens_txt.write_text("\n".join(sens_lines) + "\n", encoding="utf-8")
         pd.DataFrame(
             build_confusion_matrix_rows(review_df, include_verify_as_negative=True),
             columns=CONFUSION_MATRIX_COLUMNS,
@@ -687,6 +786,7 @@ def run_evaluate_predictions(
                 "",
                 f"sensitivity_metrics_csv={sens_csv}",
                 f"sensitivity_metrics_txt={sens_txt}",
+                f"sensitivity_metrics_md={sens_md}",
                 f"sensitivity_confusion_matrix={sens_conf}",
             ]
         )
@@ -696,6 +796,7 @@ def run_evaluate_predictions(
             "",
             f"metrics_csv={result.metrics_csv_path}",
             f"metrics_txt={result.metrics_txt_path}",
+            f"metrics_md={result.metrics_md_path}",
             f"confusion_matrix={result.confusion_matrix_path}",
             f"error_cases={result.error_cases_path}",
             f"plots_dir={plots_dir}",
