@@ -34,10 +34,23 @@ python3 -m src.tasks.hemorrhage.run_case_pipeline
 python3 -m src.tasks.hemorrhage.build_prediction_review
 python3 -m src.tasks.hemorrhage.build_prediction_review --only-mismatches
 python3 -m src.tasks.hemorrhage.build_prediction_review --only-labeled --limit 20
+python3 -m src.tasks.hemorrhage.build_prediction_review --only-fn
+python3 -m src.tasks.hemorrhage.build_prediction_review --only-fp
 ```
 
 Combines predictions, reference labels, reasoning, evidence, and compact case previews.  
 Preliminary comparison only — **not final evaluation**.
+
+**Automatic detailed error exports** (for manual validation):
+
+- `data/outputs/hemorrhage_false_negative_review.csv` — all FN cases, full detail
+- `data/outputs/hemorrhage_false_positive_review.csv` — all FP cases, full detail
+
+```bash
+wc -l data/outputs/hemorrhage_false_negative_review.csv
+wc -l data/outputs/hemorrhage_false_positive_review.csv
+head -5 data/outputs/hemorrhage_false_negative_review.csv
+```
 
 Summary: `data/outputs/hemorrhage_prediction_review_summary.txt`
 

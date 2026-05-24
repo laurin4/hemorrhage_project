@@ -14,6 +14,8 @@ from pathlib import Path
 from src.pipeline.paths import (
     HEMORRHAGE_CASE_PREDICTIONS_PATH,
     HEMORRHAGE_CONFUSION_REVIEW_PATH,
+    HEMORRHAGE_FALSE_NEGATIVE_REVIEW_PATH,
+    HEMORRHAGE_FALSE_POSITIVE_REVIEW_PATH,
     HEMORRHAGE_PREDICTION_REVIEW_PATH,
     HEMORRHAGE_PREDICTION_REVIEW_SUMMARY_PATH,
 )
@@ -66,7 +68,32 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Include only hemorrhagic/non_hemorrhagic reference labels",
     )
+    parser.add_argument(
+        "--only-fn",
+        action="store_true",
+        help="Write only FN rows to main review CSV (FN/FP detailed exports still created)",
+    )
+    parser.add_argument(
+        "--only-fp",
+        action="store_true",
+        help="Write only FP rows to main review CSV (FN/FP detailed exports still created)",
+    )
+    parser.add_argument(
+        "--fn-output",
+        type=Path,
+        default=HEMORRHAGE_FALSE_NEGATIVE_REVIEW_PATH,
+        help="Detailed false-negative review CSV path",
+    )
+    parser.add_argument(
+        "--fp-output",
+        type=Path,
+        default=HEMORRHAGE_FALSE_POSITIVE_REVIEW_PATH,
+        help="Detailed false-positive review CSV path",
+    )
     args = parser.parse_args(argv)
+
+    if args.only_fn and args.only_fp:
+        parser.error("Use only one of --only-fn or --only-fp")
 
     result = run_build_prediction_review(
         predictions_path=args.input,
@@ -78,6 +105,10 @@ def main(argv: list[str] | None = None) -> int:
         limit=args.limit,
         only_mismatches=args.only_mismatches,
         only_labeled=args.only_labeled,
+        only_fn=args.only_fn,
+        only_fp=args.only_fp,
+        false_negative_path=args.fn_output,
+        false_positive_path=args.fp_output,
     )
 
     for line in result.summary_lines:

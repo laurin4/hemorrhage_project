@@ -7,6 +7,7 @@ import pandas as pd
 
 from src.tasks.hemorrhage.export.prediction_review import (
     CONFUSION_CSV_COLUMNS,
+    DETAILED_ERROR_REVIEW_COLUMNS,
     REVIEW_CSV_COLUMNS,
     compute_prediction_vs_reference,
     derive_error_type,
@@ -120,6 +121,100 @@ def test_build_prediction_review_export(tmp_path: Path):
     assert "verify_only=1" in summary
     assert "prediction_missing=" in summary
     assert "reference_unknown=" in summary
+    assert "false_negative_review_path=" in summary
+    assert "false_positive_review_path=" in summary
+
+
+def test_fn_fp_detailed_exports(tmp_path: Path):
+    preds = pd.DataFrame(
+        [
+            {
+                "case_id": "fn_case",
+                "excel_pid": "1",
+                "excel_opdat": "2024-01-01",
+                "opber_fallnr": "F1",
+                "status": "success",
+                "klasse": 0,
+                "label": "nicht_hämorrhagisch",
+                "sicherheit": "niedrig",
+                "begruendung": "Modell sah keine akute Blutung.",
+                "evidenz_json": '[{"berichttyp":"01 Operationsbericht","feld":"diag","textstelle":"alt"}]',
+                "unsicherheitsgruende_json": '["historische Blutung"]',
+                "historische_blutung_erwaehnt": True,
+                "historische_blutung_als_aktuell_gewertet": False,
+                "raw_llm_response": '{"klasse":0}',
+                "reference_haemorrhagisch": "1",
+                "reference_nicht_haemorrhagisch": "0",
+                "reference_verify_vaskulaer": "",
+            },
+            {
+                "case_id": "fp_case",
+                "excel_pid": "2",
+                "excel_opdat": "2024-01-02",
+                "opber_fallnr": "F2",
+                "status": "success",
+                "klasse": 1,
+                "label": "hämorrhagisch",
+                "sicherheit": "hoch",
+                "begruendung": "Geblutetes Kavernom fälschlich als akut.",
+                "evidenz_json": '[{"berichttyp":"01 Operationsbericht","feld":"diag","textstelle":"geblutetes Kavernom"}]',
+                "unsicherheitsgruende_json": "[]",
+                "historische_blutung_erwaehnt": True,
+                "historische_blutung_als_aktuell_gewertet": True,
+                "raw_llm_response": '{"klasse":1}',
+                "reference_haemorrhagisch": "0",
+                "reference_nicht_haemorrhagisch": "1",
+                "reference_verify_vaskulaer": "",
+            },
+            {
+                "case_id": "tn_case",
+                "excel_pid": "3",
+                "excel_opdat": "2024-01-03",
+                "opber_fallnr": "F3",
+                "status": "success",
+                "klasse": 0,
+                "label": "nicht_hämorrhagisch",
+                "sicherheit": "hoch",
+                "begruendung": "Korrekt negativ.",
+                "evidenz_json": "[]",
+                "unsicherheitsgruende_json": "[]",
+                "reference_haemorrhagisch": "0",
+                "reference_nicht_haemorrhagisch": "1",
+                "reference_verify_vaskulaer": "",
+            },
+        ]
+    )
+    pred_path = tmp_path / "preds.csv"
+    fn_path = tmp_path / "fn.csv"
+    fp_path = tmp_path / "fp.csv"
+    preds.to_csv(pred_path, index=False)
+
+    result = run_build_prediction_review(
+        predictions_path=pred_path,
+        review_path=tmp_path / "review.csv",
+        confusion_path=tmp_path / "confusion.csv",
+        summary_path=tmp_path / "summary.txt",
+        false_negative_path=fn_path,
+        false_positive_path=fp_path,
+    )
+    assert result.fn_count == 1
+    assert result.fp_count == 1
+    assert fn_path.exists()
+    assert fp_path.exists()
+
+    fn_df = pd.read_csv(fn_path)
+    fp_df = pd.read_csv(fp_path)
+    assert list(fn_df.columns) == DETAILED_ERROR_REVIEW_COLUMNS
+    assert list(fp_df.columns) == DETAILED_ERROR_REVIEW_COLUMNS
+    assert len(fn_df) == 1
+    assert len(fp_df) == 1
+    assert fn_df.iloc[0]["prediction_vs_reference"] == "FN"
+    assert fp_df.iloc[0]["prediction_vs_reference"] == "FP"
+    assert fn_df.iloc[0]["error_type"] == "false_negative"
+    assert fp_df.iloc[0]["error_type"] == "false_positive"
+    assert "evidenz_json" in fn_df.columns
+    assert fn_df.iloc[0]["raw_llm_response"] == '{"klasse":0}'
+    assert "geblutetes Kavernom" in fp_df.iloc[0]["evidenz_json"]
 
 
 def test_error_type_mapping():

@@ -92,6 +92,11 @@ python3 -m src.tasks.hemorrhage.build_prediction_review --only-mismatches
 python3 -m src.tasks.hemorrhage.build_prediction_review --only-labeled --limit 20
 ```
 
+Also writes detailed FN/FP review CSVs automatically:
+
+- `data/outputs/hemorrhage_false_negative_review.csv`
+- `data/outputs/hemorrhage_false_positive_review.csv`
+
 Preliminary comparison only — **not final evaluation**. Summary: `data/outputs/hemorrhage_prediction_review_summary.txt`
 
 ### Preliminary evaluation (metrics + plots)

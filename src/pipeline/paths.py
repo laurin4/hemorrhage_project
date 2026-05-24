@@ -274,6 +274,12 @@ HEMORRHAGE_PREDICTION_REVIEW_SUMMARY_PATH = (
     DATA_OUTPUTS_DIR / "hemorrhage_prediction_review_summary.txt"
 )
 HEMORRHAGE_PARSE_FAILURES_PATH = DATA_OUTPUTS_DIR / "hemorrhage_parse_failures.csv"
+HEMORRHAGE_FALSE_NEGATIVE_REVIEW_PATH = (
+    DATA_OUTPUTS_DIR / "hemorrhage_false_negative_review.csv"
+)
+HEMORRHAGE_FALSE_POSITIVE_REVIEW_PATH = (
+    DATA_OUTPUTS_DIR / "hemorrhage_false_positive_review.csv"
+)
 
 # Hemorrhage preliminary evaluation (labeled subset)
 HEMORRHAGE_EVALUATION_DIR = DATA_DIR / "evaluation"

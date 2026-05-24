@@ -19,6 +19,8 @@ from src.core.case.models import ClinicalCase
 from src.pipeline.paths import (
     HEMORRHAGE_CASE_PREDICTIONS_PATH,
     HEMORRHAGE_CONFUSION_REVIEW_PATH,
+    HEMORRHAGE_FALSE_NEGATIVE_REVIEW_PATH,
+    HEMORRHAGE_FALSE_POSITIVE_REVIEW_PATH,
     HEMORRHAGE_PREDICTION_REVIEW_PATH,
     HEMORRHAGE_PREDICTION_REVIEW_SUMMARY_PATH,
 )
@@ -59,6 +61,38 @@ REVIEW_CSV_COLUMNS: List[str] = [
     "eintritt_preview",
     "austritt_preview",
     "prediction_vs_reference",
+    "high_risk_mismatch",
+    "needs_manual_review",
+]
+
+DETAILED_ERROR_REVIEW_COLUMNS: List[str] = [
+    "case_id",
+    "excel_pid",
+    "excel_opdat",
+    "opber_fallnr",
+    "reference_status",
+    "reference_haemorrhagisch",
+    "reference_nicht_haemorrhagisch",
+    "reference_verify_vaskulaer",
+    "status",
+    "klasse",
+    "label",
+    "sicherheit",
+    "prediction_vs_reference",
+    "error_type",
+    "begruendung",
+    "evidence_summary",
+    "evidenz_json",
+    "historische_blutung_erwaehnt",
+    "historische_blutung_als_aktuell_gewertet",
+    "unsicherheitsgruende_json",
+    "op_preview",
+    "eintritt_preview",
+    "austritt_preview",
+    "raw_llm_response",
+    "parse_error_reason",
+    "parse_error_detail",
+    "parse_repair_applied",
     "high_risk_mismatch",
     "needs_manual_review",
 ]
@@ -114,7 +148,11 @@ class PredictionReviewResult:
     review_path: Path
     confusion_path: Path
     summary_path: Path
+    false_negative_path: Path
+    false_positive_path: Path
     rows_written: int = 0
+    fn_count: int = 0
+    fp_count: int = 0
     summary_lines: List[str] = field(default_factory=list)
     errors: List[str] = field(default_factory=list)
 
@@ -438,7 +476,111 @@ def build_review_row(
     }
 
 
-def build_prediction_review_summary(review_rows: Sequence[Dict[str, Any]]) -> List[str]:
+def _cell_str(value: object) -> str:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return ""
+    return str(value).strip()
+
+
+def build_detailed_error_review_row(
+    review_row: Dict[str, Any],
+    pred_row: Optional[pd.Series] = None,
+) -> Dict[str, Any]:
+    """Merge review fields with raw prediction columns for manual FN/FP analysis."""
+    pvr = str(review_row.get("prediction_vs_reference", "") or "").strip()
+    pred = pred_row if pred_row is not None else pd.Series(dtype=object)
+
+    return {
+        "case_id": review_row.get("case_id", ""),
+        "excel_pid": review_row.get("excel_pid", ""),
+        "excel_opdat": review_row.get("excel_opdat", ""),
+        "opber_fallnr": review_row.get("opber_fallnr", ""),
+        "reference_status": review_row.get("reference_status", ""),
+        "reference_haemorrhagisch": review_row.get("reference_haemorrhagisch", ""),
+        "reference_nicht_haemorrhagisch": review_row.get("reference_nicht_haemorrhagisch", ""),
+        "reference_verify_vaskulaer": review_row.get("reference_verify_vaskulaer", ""),
+        "status": review_row.get("status", ""),
+        "klasse": review_row.get("klasse", ""),
+        "label": review_row.get("label", ""),
+        "sicherheit": review_row.get("sicherheit", ""),
+        "prediction_vs_reference": pvr,
+        "error_type": derive_error_type(pvr),
+        "begruendung": review_row.get("begruendung", ""),
+        "evidence_summary": review_row.get("evidence_summary", ""),
+        "evidenz_json": _cell_str(pred.get("evidenz_json", "")),
+        "historische_blutung_erwaehnt": review_row.get("historische_blutung_erwaehnt", ""),
+        "historische_blutung_als_aktuell_gewertet": review_row.get(
+            "historische_blutung_als_aktuell_gewertet", ""
+        ),
+        "unsicherheitsgruende_json": _cell_str(pred.get("unsicherheitsgruende_json", "")),
+        "op_preview": review_row.get("op_preview", ""),
+        "eintritt_preview": review_row.get("eintritt_preview", ""),
+        "austritt_preview": review_row.get("austritt_preview", ""),
+        "raw_llm_response": _cell_str(pred.get("raw_llm_response", "")),
+        "parse_error_reason": review_row.get("parse_error_reason", ""),
+        "parse_error_detail": review_row.get("parse_error_detail", ""),
+        "parse_repair_applied": review_row.get("parse_repair_applied", ""),
+        "high_risk_mismatch": review_row.get("high_risk_mismatch", False),
+        "needs_manual_review": review_row.get("needs_manual_review", False),
+    }
+
+
+def write_error_review_exports(
+    review_rows: Sequence[Dict[str, Any]],
+    preds_df: pd.DataFrame,
+    *,
+    false_negative_path: Path,
+    false_positive_path: Path,
+) -> Tuple[int, int]:
+    """
+    Write detailed FN/FP review CSVs.
+
+    Only rows with prediction_vs_reference == FN or FP (strict).
+    """
+    pred_by_id: Dict[str, pd.Series] = {}
+    if "case_id" in preds_df.columns:
+        for _, row in preds_df.iterrows():
+            cid = str(row.get("case_id", "") or "").strip()
+            if cid:
+                pred_by_id[cid] = row
+
+    fn_rows: List[Dict[str, Any]] = []
+    fp_rows: List[Dict[str, Any]] = []
+    for review_row in review_rows:
+        pvr = str(review_row.get("prediction_vs_reference", "") or "").strip()
+        if pvr == "FN":
+            fn_rows.append(
+                build_detailed_error_review_row(
+                    review_row, pred_by_id.get(str(review_row.get("case_id", "")))
+                )
+            )
+        elif pvr == "FP":
+            fp_rows.append(
+                build_detailed_error_review_row(
+                    review_row, pred_by_id.get(str(review_row.get("case_id", "")))
+                )
+            )
+
+    false_negative_path.parent.mkdir(parents=True, exist_ok=True)
+    false_positive_path.parent.mkdir(parents=True, exist_ok=True)
+
+    pd.DataFrame(fn_rows, columns=DETAILED_ERROR_REVIEW_COLUMNS).to_csv(
+        false_negative_path, index=False, encoding="utf-8"
+    )
+    pd.DataFrame(fp_rows, columns=DETAILED_ERROR_REVIEW_COLUMNS).to_csv(
+        false_positive_path, index=False, encoding="utf-8"
+    )
+    return len(fn_rows), len(fp_rows)
+
+
+def build_prediction_review_summary(
+    review_rows: Sequence[Dict[str, Any]],
+    *,
+    false_negative_path: Optional[Path] = None,
+    false_positive_path: Optional[Path] = None,
+    fn_count: Optional[int] = None,
+    fp_count: Optional[int] = None,
+) -> List[str]:
     """Preliminary labeled-subset comparison summary (not final evaluation)."""
     total = len(review_rows)
     tp = sum(1 for r in review_rows if r.get("prediction_vs_reference") == "TP")
@@ -486,6 +628,15 @@ def build_prediction_review_summary(review_rows: Sequence[Dict[str, Any]]) -> Li
         )
     else:
         lines.append("mismatch_rate_labeled_subset_only=n/a (no labeled TP/TN/FP/FN cases)")
+
+    if fn_count is not None:
+        lines.append(f"FN_count={fn_count}")
+    if fp_count is not None:
+        lines.append(f"FP_count={fp_count}")
+    if false_negative_path is not None:
+        lines.append(f"false_negative_review_path={false_negative_path}")
+    if false_positive_path is not None:
+        lines.append(f"false_positive_review_path={false_positive_path}")
     return lines
 
 
@@ -500,15 +651,24 @@ def run_build_prediction_review(
     limit: Optional[int] = None,
     only_mismatches: bool = False,
     only_labeled: bool = False,
+    only_fn: bool = False,
+    only_fp: bool = False,
+    false_negative_path: Optional[Path] = None,
+    false_positive_path: Optional[Path] = None,
+    skip_main_exports: bool = False,
 ) -> PredictionReviewResult:
     pred_path = predictions_path or HEMORRHAGE_CASE_PREDICTIONS_PATH
     out_path = review_path or HEMORRHAGE_PREDICTION_REVIEW_PATH
     conf_path = confusion_path or HEMORRHAGE_CONFUSION_REVIEW_PATH
     sum_path = summary_path or HEMORRHAGE_PREDICTION_REVIEW_SUMMARY_PATH
+    fn_path = false_negative_path or HEMORRHAGE_FALSE_NEGATIVE_REVIEW_PATH
+    fp_path = false_positive_path or HEMORRHAGE_FALSE_POSITIVE_REVIEW_PATH
     result = PredictionReviewResult(
         review_path=out_path,
         confusion_path=conf_path,
         summary_path=sum_path,
+        false_negative_path=fn_path,
+        false_positive_path=fp_path,
     )
 
     if not pred_path.exists():
@@ -552,6 +712,20 @@ def run_build_prediction_review(
 
     summary_rows = list(review_rows)
 
+    fn_count, fp_count = write_error_review_exports(
+        summary_rows,
+        preds,
+        false_negative_path=fn_path,
+        false_positive_path=fp_path,
+    )
+    result.fn_count = fn_count
+    result.fp_count = fp_count
+
+    if only_fn:
+        review_rows = [r for r in review_rows if r["prediction_vs_reference"] == "FN"]
+    elif only_fp:
+        review_rows = [r for r in review_rows if r["prediction_vs_reference"] == "FP"]
+
     confusion_rows = [build_confusion_row(r) for r in review_rows]
     confusion_rows.sort(key=_confusion_sort_priority)
 
@@ -565,22 +739,35 @@ def run_build_prediction_review(
     conf_path.parent.mkdir(parents=True, exist_ok=True)
     sum_path.parent.mkdir(parents=True, exist_ok=True)
 
-    pd.DataFrame(review_rows, columns=REVIEW_CSV_COLUMNS).to_csv(
-        out_path, index=False, encoding="utf-8"
-    )
-    pd.DataFrame(confusion_rows, columns=CONFUSION_CSV_COLUMNS).to_csv(
-        conf_path, index=False, encoding="utf-8"
-    )
-    result.rows_written = len(review_rows)
+    if not skip_main_exports:
+        pd.DataFrame(review_rows, columns=REVIEW_CSV_COLUMNS).to_csv(
+            out_path, index=False, encoding="utf-8"
+        )
+        pd.DataFrame(confusion_rows, columns=CONFUSION_CSV_COLUMNS).to_csv(
+            conf_path, index=False, encoding="utf-8"
+        )
+        result.rows_written = len(review_rows)
+    else:
+        result.rows_written = fn_count + fp_count
 
-    summary_lines = build_prediction_review_summary(summary_rows)
+    summary_lines = build_prediction_review_summary(
+        summary_rows,
+        false_negative_path=fn_path,
+        false_positive_path=fp_path,
+        fn_count=fn_count,
+        fp_count=fp_count,
+    )
     sum_path.write_text("\n".join(summary_lines) + "\n", encoding="utf-8")
     result.summary_lines = summary_lines + [
         "",
         f"review_csv={out_path}",
         f"confusion_csv={conf_path}",
+        f"false_negative_review_csv={fn_path}",
+        f"false_positive_review_csv={fp_path}",
         f"summary_txt={sum_path}",
         f"rows_written={result.rows_written}",
+        f"FN_export_rows={fn_count}",
+        f"FP_export_rows={fp_count}",
     ]
     if result.errors:
         result.summary_lines.append("warnings:")
