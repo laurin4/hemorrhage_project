@@ -16,7 +16,7 @@ from src.pipeline.paths import (
     HEMORRHAGE_EVALUATION_DIR,
     HEMORRHAGE_PREDICTION_REVIEW_PATH,
 )
-from src.tasks.hemorrhage.export.evaluate_predictions import run_evaluate_predictions
+from src.tasks.hemorrhage.evaluation.runner import run_evaluate_predictions
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
@@ -24,7 +24,7 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
-            "Preliminary evaluation of hemorrhage predictions on labeled subset "
+            "Preliminary evaluation on labeled subset "
             "(NOT final validation — Verify_Vaskulär excluded by default)."
         )
     )
@@ -71,6 +71,12 @@ def main(argv: list[str] | None = None) -> int:
         print("--- Sensitivity analysis summary ---")
         for line in result.sensitivity_summary_lines:
             print(line)
+
+    if result.warnings:
+        print("")
+        print("Warnings:")
+        for w in result.warnings:
+            print(f"  - {w}")
 
     if result.errors:
         return 1

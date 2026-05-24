@@ -6,7 +6,7 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 
-from src.tasks.hemorrhage.export.evaluate_predictions import (
+from src.tasks.hemorrhage.evaluation.runner import (
     build_error_cases_df,
     build_metrics_record,
     compute_binary_metrics,
@@ -193,10 +193,10 @@ def test_output_files_created(tmp_path: Path):
         plots_dir.mkdir(parents=True, exist_ok=True)
         (plots_dir / "confusion_matrix.png").write_text("png", encoding="utf-8")
         (plots_dir / "reference_status_distribution.png").write_text("png", encoding="utf-8")
-        return [plots_dir / "confusion_matrix.png"]
+        return [], []
 
     with patch(
-        "src.tasks.hemorrhage.export.evaluate_predictions.generate_plots",
+        "src.tasks.hemorrhage.evaluation.runner.generate_plots",
         side_effect=_fake_plots,
     ):
         result = run_evaluate_predictions(
