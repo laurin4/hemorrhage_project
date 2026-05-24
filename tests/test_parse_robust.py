@@ -2,8 +2,6 @@
 
 import json
 
-import pytest
-
 from src.tasks.hemorrhage.inference.parse import (
     parse_hemorrhage_response,
     parse_hemorrhage_response_legacy,
@@ -93,7 +91,6 @@ def test_malformed_json_parse_failed_with_reason():
 
 
 def test_typical_csv_style_response_with_evidence_success():
-    """Pattern: JSON object with evidence array and class 1."""
     payload = _valid_payload(
         label="hämorrhagisch",
         evidenz=[
@@ -142,3 +139,39 @@ def test_invalid_klasse_label_combination():
     result = parse_hemorrhage_response(json.dumps(payload), context="t12")
     assert not result.success
     assert result.parse_error_reason == "invalid_klasse_label_combination"
+
+
+def test_raw_newline_inside_string_repaired_success():
+    raw = (
+        '{"klasse": 1, "label": "hämorrhagisch", "begruendung": "erste zeile'
+        + '\n'
+        + 'zweite zeile", "evidenz": [{"berichttyp":"01 Operationsbericht","feld":"diag","textstelle":"text'
+        + '\n'
+        + 'fortsetzung"}]}'
+    )
+    result = parse_hemorrhage_response(raw, context="ctrl_nl")
+    assert result.success
+    assert result.prediction["klasse"] == 1
+    assert result.parse_repair_applied == "control_chars_escaped"
+
+
+def test_raw_tab_inside_string_repaired_success():
+    raw = '{"klasse": 1, "label": "hämorrhagisch", "begruendung": "a' + '\t' + 'b"}'
+    result = parse_hemorrhage_response(raw, context="ctrl_tab")
+    assert result.success
+    assert result.parse_repair_applied == "control_chars_escaped"
+
+
+def test_valid_json_outside_string_formatting_still_parses():
+    raw = '{\n  "klasse": 0,\n  "label": "nicht_hämorrhagisch",\n  "evidenz": []\n}'
+    result = parse_hemorrhage_response(raw, context="fmt")
+    assert result.success
+    assert result.prediction["klasse"] == 0
+    assert result.parse_repair_applied == ""
+
+
+def test_nonrecoverable_malformed_json_still_fails():
+    raw = '{"klasse": 1, "label": "hämorrhagisch",'
+    result = parse_hemorrhage_response(raw, context="bad")
+    assert not result.success
+    assert result.parse_error_reason in ("json_decode_error", "no_json_object_found")

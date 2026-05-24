@@ -38,6 +38,7 @@ class HemorrhageParseResult:
     error_message: str = ""
     parse_error_reason: str = ""
     parse_error_detail: str = ""
+    parse_repair_applied: str = ""
 
 
 def _empty_prediction() -> Dict[str, Any]:
@@ -70,8 +71,12 @@ def _fail(
     )
 
 
-def _ok(pred: Dict[str, Any]) -> HemorrhageParseResult:
-    return HemorrhageParseResult(prediction=pred, success=True)
+def _ok(pred: Dict[str, Any], *, parse_repair_applied: str = "") -> HemorrhageParseResult:
+    return HemorrhageParseResult(
+        prediction=pred,
+        success=True,
+        parse_repair_applied=parse_repair_applied,
+    )
 
 
 def _strip_bom(text: str) -> str:
@@ -160,47 +165,119 @@ def extract_first_json_object(text: str) -> str:
     return ""
 
 
-def _try_json_loads(text: str) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+def sanitize_json_control_chars_in_strings(json_text: str) -> str:
+    """
+    Escape raw control characters that appear inside JSON string values.
+
+    Walks the text character-by-character, tracks string context and escapes,
+    and only modifies characters inside double-quoted strings.
+    """
+    if not json_text:
+        return json_text
+
+    out: List[str] = []
+    in_string = False
+    escape = False
+
+    for ch in json_text:
+        if in_string:
+            if escape:
+                out.append(ch)
+                escape = False
+                continue
+            if ch == "\\":
+                out.append(ch)
+                escape = True
+                continue
+            if ch == '"':
+                out.append(ch)
+                in_string = False
+                continue
+            if ch == "\n":
+                out.append("\\n")
+            elif ch == "\r":
+                out.append("\\r")
+            elif ch == "\t":
+                out.append("\\t")
+            elif ord(ch) < 0x20:
+                out.append(f"\\u{ord(ch):04x}")
+            else:
+                out.append(ch)
+            continue
+
+        out.append(ch)
+        if ch == '"':
+            in_string = True
+            escape = False
+
+    return "".join(out)
+
+
+def _try_json_loads(text: str) -> Tuple[Optional[Dict[str, Any]], Optional[str], str]:
+    """
+    Parse JSON object text. Returns (dict|None, error_detail, parse_repair_applied).
+
+    Tries raw text first, then sanitized control-char repair inside strings.
+    """
     if not text or not text.strip():
-        return None, "empty text"
-    candidates = [text.strip(), _remove_trailing_commas(text.strip())]
+        return None, "empty text", ""
+
+    raw = text.strip()
+    candidates: List[Tuple[str, str]] = [(raw, "")]
+    no_trail = _remove_trailing_commas(raw)
+    if no_trail != raw:
+        candidates.append((no_trail, ""))
+
+    sanitized = sanitize_json_control_chars_in_strings(raw)
+    if sanitized != raw:
+        candidates.append((sanitized, "control_chars_escaped"))
+        no_trail_sanitized = _remove_trailing_commas(sanitized)
+        if no_trail_sanitized != sanitized:
+            candidates.append((no_trail_sanitized, "control_chars_escaped"))
+
     last_err = ""
-    for candidate in candidates:
+    seen: set[str] = set()
+    for candidate, repair in candidates:
+        if candidate in seen:
+            continue
+        seen.add(candidate)
         try:
             parsed = json.loads(candidate)
             if isinstance(parsed, dict):
-                return parsed, None
+                return parsed, None, repair
             if isinstance(parsed, str):
-                nested, nested_err = _try_json_loads(parsed)
+                nested, nested_err, nested_repair = _try_json_loads(parsed)
                 if nested is not None:
-                    return nested, None
+                    applied = repair or nested_repair
+                    return nested, None, applied
                 last_err = nested_err or "nested string not object"
         except json.JSONDecodeError as exc:
             last_err = str(exc)
-    return None, last_err
+    return None, last_err, ""
 
 
-def _parse_llm_json_dict(raw_output: str, context: str) -> Tuple[Optional[Dict[str, Any]], str]:
-    """Extract and parse a JSON object from raw LLM text. Returns (dict|None, detail)."""
+def _parse_llm_json_dict(
+    raw_output: str, context: str
+) -> Tuple[Optional[Dict[str, Any]], str, str]:
+    """Extract and parse a JSON object from raw LLM text. Returns (dict|None, detail, repair)."""
     if not raw_output or not str(raw_output).strip():
-        return None, "empty LLM response"
+        return None, "empty LLM response", ""
 
     text = _strip_bom(str(raw_output))
-    text = _strip_control_chars(text)
     text = _unescape_csv_style_quotes(text)
     text = _strip_markdown_fences(text)
 
-    parsed, err = _try_json_loads(text)
+    parsed, err, repair = _try_json_loads(text)
     if parsed is not None:
-        return parsed, ""
+        return parsed, "", repair
 
     snippet = extract_first_json_object(text)
     if snippet:
-        parsed, err = _try_json_loads(snippet)
+        parsed, err, repair = _try_json_loads(snippet)
         if parsed is not None:
-            return parsed, ""
+            return parsed, "", repair
 
-    return None, err or f"no JSON object found ({context})"
+    return None, err or f"no JSON object found ({context})", ""
 
 
 def _normalize_label_key(label: str) -> str:
@@ -349,7 +426,7 @@ def parse_hemorrhage_response(raw_output: str, *, context: str) -> HemorrhagePar
         return _fail("empty_llm_response", "empty LLM response")
 
     try:
-        parsed, detail = _parse_llm_json_dict(raw_output, context)
+        parsed, detail, repair = _parse_llm_json_dict(raw_output, context)
     except Exception as exc:
         return _fail("unexpected_exception", str(exc))
 
@@ -357,6 +434,8 @@ def parse_hemorrhage_response(raw_output: str, *, context: str) -> HemorrhagePar
         reason = "json_decode_error" if detail and "json" in detail.lower() else "no_json_object_found"
         if "no JSON object" in detail or "no json object" in detail.lower():
             reason = "no_json_object_found"
+        if "Invalid control character" in detail:
+            reason = "json_decode_error"
         return _fail(reason, detail)
 
     klasse, label, conflict = _resolve_klasse_label(parsed)
@@ -385,7 +464,7 @@ def parse_hemorrhage_response(raw_output: str, *, context: str) -> HemorrhagePar
         parsed.get("unsicherheitsgruende")
     )
 
-    return _ok(out)
+    return _ok(out, parse_repair_applied=repair)
 
 
 def parse_hemorrhage_response_legacy(

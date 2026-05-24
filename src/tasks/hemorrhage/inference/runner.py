@@ -41,6 +41,7 @@ PARSE_FAILURES_CSV_COLUMNS: List[str] = [
     "raw_llm_response",
     "parse_error_reason",
     "parse_error_detail",
+    "parse_repair_applied",
     "first_500_chars",
     "last_500_chars",
 ]
@@ -70,6 +71,7 @@ PREDICTION_CSV_COLUMNS: List[str] = [
     "error_message",
     "parse_error_reason",
     "parse_error_detail",
+    "parse_repair_applied",
     "reference_haemorrhagisch",
     "reference_nicht_haemorrhagisch",
     "reference_verify_vaskulaer",
@@ -121,6 +123,7 @@ def _base_row(case: ClinicalCase, ref_lookup: ReferenceLookup) -> Dict[str, Any]
         "error_message": "",
         "parse_error_reason": "",
         "parse_error_detail": "",
+        "parse_repair_applied": "",
         **ref,
     }
 
@@ -176,6 +179,7 @@ def process_single_case(
     _apply_prediction(row, parse_result.prediction)
     row["parse_error_reason"] = parse_result.parse_error_reason
     row["parse_error_detail"] = parse_result.parse_error_detail
+    row["parse_repair_applied"] = parse_result.parse_repair_applied
 
     if parse_result.success:
         row["status"] = "success"
@@ -208,6 +212,7 @@ def write_parse_failures_csv(rows: List[Dict[str, Any]], output_path: Path) -> N
             "raw_llm_response": r.get("raw_llm_response", ""),
             "parse_error_reason": r.get("parse_error_reason", ""),
             "parse_error_detail": r.get("parse_error_detail", ""),
+            "parse_repair_applied": r.get("parse_repair_applied", ""),
             "first_500_chars": preview_snippet(r.get("raw_llm_response", ""), 500),
             "last_500_chars": (
                 str(r.get("raw_llm_response", ""))[-500:]
