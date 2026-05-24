@@ -75,6 +75,17 @@ Expected outputs:
 
 - `data/inspection/` — schema, merge, label analytics
 - `data/outputs/hemorrhage_case_predictions.csv` — case predictions
+- `data/outputs/hemorrhage_prediction_review.csv` — unified qualitative review table
+
+### Prediction review export (main qualitative artifact)
+
+```bash
+python3 -m src.tasks.hemorrhage.build_prediction_review
+python3 -m src.tasks.hemorrhage.build_prediction_review --only-mismatches
+python3 -m src.tasks.hemorrhage.build_prediction_review --only-labeled --limit 20
+```
+
+Preliminary comparison only — **not final evaluation**. Summary: `data/outputs/hemorrhage_prediction_review_summary.txt`
 
 ### Phase 0 status
 

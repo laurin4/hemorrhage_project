@@ -25,6 +25,20 @@ python3 -m src.tasks.hemorrhage.run_case_pipeline
 
 - `data/inspection/` — structural + label analytics
 - `data/outputs/hemorrhage_case_predictions.csv` — one row per case
+- `data/outputs/hemorrhage_prediction_review.csv` — unified qualitative review table
+
+## Prediction review export (qualitative analysis)
+
+```bash
+python3 -m src.tasks.hemorrhage.build_prediction_review
+python3 -m src.tasks.hemorrhage.build_prediction_review --only-mismatches
+python3 -m src.tasks.hemorrhage.build_prediction_review --only-labeled --limit 20
+```
+
+Combines predictions, reference labels, reasoning, evidence, and compact case previews.  
+Preliminary comparison only — **not final evaluation**.
+
+Summary: `data/outputs/hemorrhage_prediction_review_summary.txt`
 
 ---
 
