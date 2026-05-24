@@ -1,47 +1,68 @@
 # Hemorrhage task — case-centric pipeline
 
-## Phase 0b — Real data inspection (current)
+## How to run on the server (full workflow)
 
-Structural validation of server Excel files — **no NLP**.
+```bash
+cd ~/hemorrhage_project
+source Ba_venv/bin/activate
+export PROJECT_TASK=hemorrhage
+
+# Verify raw files
+ls -la data/raw/NCH_pidlist_opdat_ab_eb_op_SJO_pg_DRQ0001416.xlsx
+ls -la data/raw/260507_CCM_DAVF.xlsx
+
+python3 -m src.tasks.hemorrhage.inspect_data
+python3 -m src.tasks.hemorrhage.analyze_reference_labels
+python3 -m src.tasks.hemorrhage.run_case_pipeline --dry-run --limit 5
+
+export LLM_PROVIDER=usz_api
+export LLM_TEMPERATURE=0
+python3 -m src.tasks.hemorrhage.run_case_pipeline --limit 5
+python3 -m src.tasks.hemorrhage.run_case_pipeline
+```
+
+**Outputs:**
+
+- `data/inspection/` — structural + label analytics
+- `data/outputs/hemorrhage_case_predictions.csv` — one row per case
+
+---
+
+## Phase 1 — Case-level inference (prototype)
+
+```bash
+python3 -m src.tasks.hemorrhage.run_case_pipeline [OPTIONS]
+```
+
+| Option | Role |
+|--------|------|
+| `--dry-run` | Build prompts only; `status=dry_run` |
+| `--limit N` | First N cases |
+| `--case-id ID` | Single case |
+| `--output PATH` | Custom CSV path |
+| `--reports` / `--reference` | Override Excel paths |
+
+Prompt: `prompts/hemorrhage_case_classification.txt` (German, structured JSON).
+
+**No keyword prefilter.** Incomplete cases are sent to LLM.
+
+Delirium pipeline: `src.pipeline.run_pipeline` — **not used** for hemorrhage.
+
+---
+
+## Phase 0b — Inspection
 
 ```bash
 python3 -m src.tasks.hemorrhage.inspect_data
-```
-
-**Inputs** (defaults under `data/raw/`):
-
-| Role | Default filename |
-|------|------------------|
-| Clinical reports | `NCH_pidlist_opdat_ab_eb_op_SJO_pg_DRQ0001416.xlsx` |
-| Reference / labels | `260507_CCM_DAVF.xlsx` (alt: `260507 CCM DAVF.xlsx`) |
-
-Env: `HEMORRHAGE_REPORTS_XLSX`, `HEMORRHAGE_REFERENCE_XLSX`, optional sheet names.
-
-Reference column aliases: `Patient::Patientennummer` → `excel_pid`, `v_Operation_Datum` → `excel_opdat`.  
-Merge validation uses `(excel_pid, excel_opdat)` only (reference has no `opber_fallnr`).
-
-## Reference label analytics
-
-```bash
 python3 -m src.tasks.hemorrhage.analyze_reference_labels
 ```
 
-Outputs under `data/inspection/reference_label_*.csv` — descriptive only, no NLP.
+Reports: `NCH_pidlist_...xlsx` | Reference: `260507_CCM_DAVF.xlsx`
 
-**Outputs:** `data/inspection/` (CSVs + `inspection_summary.txt`)
+---
 
 ## Phase 0 — Case build from CSV
 
 ```bash
 python3 -m src.tasks.hemorrhage.build_cases --input data/raw/reports.csv
 ```
-
-### Required input columns
-
-- `excel_pid`, `excel_opdat`, `opber_fallnr` — case keys
-- `typus` — e.g. `01 Operationsbericht`, `02 Eintrittsbericht`, `03 Austrittsbericht`
-- Text: `diag`, `indik_untersuch`, `vorgehen_beurt` (CCM export)
-
-### Prefilter
-
-Default: `HEMORRHAGE_PREFILTER_MODE=disabled` — do not use delirium keyword skip for hemorrhage.

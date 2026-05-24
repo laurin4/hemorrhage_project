@@ -26,15 +26,60 @@ Reports per case (0–3 allowed):
 
 **Incomplete cases are expected** — the pipeline must not assume all three exist.
 
-### Phase 0 status (architecture only)
+### Phase 1 — Case-level LLM inference (prototype)
+
+```bash
+python3 -m src.tasks.hemorrhage.run_case_pipeline --dry-run --limit 5
+python3 -m src.tasks.hemorrhage.run_case_pipeline --limit 5
+python3 -m src.tasks.hemorrhage.run_case_pipeline
+```
+
+Output: `data/outputs/hemorrhage_case_predictions.csv` (one row per case).
+
+No keyword prefilter. Delirium `run_pipeline.py` **unchanged**.
+
+### How to run on the server (copy-paste)
+
+```bash
+cd ~/hemorrhage_project
+source Ba_venv/bin/activate
+export PROJECT_TASK=hemorrhage
+
+# 1. Verify raw files exist
+ls -la data/raw/NCH_pidlist_opdat_ab_eb_op_SJO_pg_DRQ0001416.xlsx
+ls -la data/raw/260507_CCM_DAVF.xlsx
+
+# 2. Structural inspection
+python3 -m src.tasks.hemorrhage.inspect_data
+
+# 3. Reference label analytics
+python3 -m src.tasks.hemorrhage.analyze_reference_labels
+
+# 4. Dry-run prompts (no LLM)
+python3 -m src.tasks.hemorrhage.run_case_pipeline --dry-run --limit 5
+
+# 5. Limited LLM pilot
+export LLM_PROVIDER=usz_api
+export LLM_TEMPERATURE=0
+python3 -m src.tasks.hemorrhage.run_case_pipeline --limit 5
+
+# 6. Full case inference
+python3 -m src.tasks.hemorrhage.run_case_pipeline
+```
+
+Expected outputs:
+
+- `data/inspection/` — schema, merge, label analytics
+- `data/outputs/hemorrhage_case_predictions.csv` — case predictions
+
+### Phase 0 status
 
 | Done | Not yet |
 |------|---------|
-| `ClinicalCase` model, case_id, grouping | Hemorrhage prompts |
-| `case_builder` from flat CSV | Keyword extraction |
-| Case export schema (`clinical_cases.csv`) | Guardrails / inference |
-| Prefilter disabled by default | Manual labels / evaluation |
-| `src/core/` + `src/tasks/hemorrhage/` layout | Removal of delirium code |
+| `ClinicalCase` model, case_id, grouping | Keyword prefilter |
+| `case_builder`, inspection, reference analytics | Final evaluation metrics |
+| Case-level LLM prototype (`run_case_pipeline`) | Guardrails |
+| Prefilter disabled by default | Removal of delirium code |
 
 ### Inspect real server data (Phase 0b — no NLP)
 

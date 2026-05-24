@@ -264,3 +264,7 @@ REFERENCE_LABEL_INCONSISTENCIES_PATH = INSPECTION_DIR / "reference_label_inconsi
 REFERENCE_VALUE_DISTRIBUTION_PATH = INSPECTION_DIR / "reference_value_distribution.csv"
 REFERENCE_KEYWORD_BY_LABEL_PATH = INSPECTION_DIR / "reference_keyword_by_label.csv"
 REFERENCE_LABEL_ANALYSIS_SUMMARY_PATH = INSPECTION_DIR / "reference_label_analysis_summary.txt"
+
+# Hemorrhage case-level predictions (prototype)
+DATA_OUTPUTS_DIR = DATA_DIR / "outputs"
+HEMORRHAGE_CASE_PREDICTIONS_PATH = DATA_OUTPUTS_DIR / "hemorrhage_case_predictions.csv"

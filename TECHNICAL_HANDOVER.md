@@ -60,6 +60,21 @@ src/
   analysis/                      # Report/patient validation (delirium)
 ```
 
+### Phase 1 — Case-level LLM inference (IMPLEMENTED)
+
+```bash
+python3 -m src.tasks.hemorrhage.run_case_pipeline --dry-run --limit 5
+python3 -m src.tasks.hemorrhage.run_case_pipeline
+```
+
+- Entry: `src/tasks/hemorrhage/run_case_pipeline.py`
+- Prompt: `prompts/hemorrhage_case_classification.txt`
+- Output: `data/outputs/hemorrhage_case_predictions.csv`
+- One case = one LLM call = one prediction row
+- No keyword prefilter; delirium `run_pipeline.py` unchanged
+
+See **HANDOVER_SUMMARY.md** → “How to run on the server” for full copy-paste workflow.
+
 ### Phase 0b — Real Excel inspection (IMPLEMENTED)
 
 ```bash
