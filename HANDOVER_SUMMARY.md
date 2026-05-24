@@ -38,6 +38,10 @@ Output: `data/outputs/hemorrhage_case_predictions.csv` (one row per case).
 
 No keyword prefilter. Delirium `run_pipeline.py` **unchanged**.
 
+Case loading lives under `src/tasks/hemorrhage/io/` (`load_cases.py`, `reference_lookup.py`).  
+**No additional Python packages** are required for this pipeline — only internal imports.  
+`wheelhouse_linux` is relevant for external dependency installation on the server, not for internal module paths.
+
 ### How to run on the server (copy-paste)
 
 ```bash

@@ -48,6 +48,9 @@ Prompt: `prompts/hemorrhage_case_classification.txt` (German, structured JSON).
 
 Delirium pipeline: `src.pipeline.run_pipeline` — **not used** for hemorrhage.
 
+**Internal modules:** `src/tasks/hemorrhage/io/load_cases.py`, `reference_lookup.py`  
+**No new Python packages** required — `wheelhouse_linux` is only for external deps, not internal imports.
+
 ---
 
 ## Phase 0b — Inspection

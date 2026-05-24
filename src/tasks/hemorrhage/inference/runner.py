@@ -16,11 +16,12 @@ from src.tasks.hemorrhage.constants import (
     TYPUS_EINTRITTSBERICHT,
     TYPUS_OPERATIONSBERICHT,
 )
-from src.tasks.hemorrhage.data.load_cases import load_clinical_cases
-from src.tasks.hemorrhage.data.reference_lookup import (
+from src.tasks.hemorrhage.io.load_cases import load_clinical_cases
+from src.tasks.hemorrhage.io.reference_lookup import (
     ReferenceLookup,
     build_reference_lookup,
     reference_fields_for_case,
+    resolve_reference_path,
 )
 from src.tasks.hemorrhage.inference.parse import (
     evidenz_to_json,
@@ -206,23 +207,46 @@ def run_hemorrhage_case_pipeline(
     cases, stats, reports_file, load_errors = load_clinical_cases(reports_path)
     result.errors.extend(load_errors)
 
+    ref_path = resolve_reference_path(reference_path)
+    ref_status = "found" if ref_path.exists() else "missing (optional)"
+
     if not cases:
+        print("Hemorrhage case pipeline — startup")
+        print(f"  reports_path={reports_file}")
+        print(f"  reference_path={ref_path} ({ref_status})")
+        print(f"  cases_loaded=0")
+        print(f"  output_path={out_path}")
+        print(f"  dry_run={dry_run}")
         result.errors.append("no_cases_built")
         result.summary_lines = ["No cases to process.", *result.errors]
         return result
 
-    ref_lookup, ref_errors = build_reference_lookup(reference_path)
+    ref_lookup, ref_errors, ref_resolved_path = build_reference_lookup(reference_path)
     result.errors.extend(ref_errors)
 
     work = list(cases)
     if case_id:
         work = [c for c in work if c.case_id == case_id]
         if not work:
+            print("Hemorrhage case pipeline — startup")
+            print(f"  reports_path={reports_file}")
+            print(f"  reference_path={ref_resolved_path} ({ref_status})")
+            print(f"  cases_loaded={len(cases)}")
+            print(f"  output_path={out_path}")
+            print(f"  dry_run={dry_run}")
             result.errors.append(f"case_id_not_found: {case_id}")
             result.summary_lines = [f"Case {case_id!r} not found among {len(cases)} cases."]
             return result
     if limit is not None and limit > 0:
         work = work[:limit]
+
+    print("Hemorrhage case pipeline — startup")
+    print(f"  reports_path={reports_file}")
+    print(f"  reference_path={ref_resolved_path} ({ref_status})")
+    print(f"  cases_loaded={len(cases)}")
+    print(f"  cases_to_process={len(work)}")
+    print(f"  output_path={out_path}")
+    print(f"  dry_run={dry_run}")
 
     total = len(work)
     rows: List[Dict[str, Any]] = []
