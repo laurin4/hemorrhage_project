@@ -13,6 +13,7 @@ from pathlib import Path
 
 from src.pipeline.paths import (
     HEMORRHAGE_CASE_PREDICTIONS_PATH,
+    HEMORRHAGE_CONFUSION_REVIEW_PATH,
     HEMORRHAGE_PREDICTION_REVIEW_PATH,
     HEMORRHAGE_PREDICTION_REVIEW_SUMMARY_PATH,
 )
@@ -41,6 +42,12 @@ def main(argv: list[str] | None = None) -> int:
         help="Review CSV output path",
     )
     parser.add_argument(
+        "--confusion-output",
+        type=Path,
+        default=HEMORRHAGE_CONFUSION_REVIEW_PATH,
+        help="Compact confusion review CSV output path",
+    )
+    parser.add_argument(
         "--summary",
         type=Path,
         default=HEMORRHAGE_PREDICTION_REVIEW_SUMMARY_PATH,
@@ -64,6 +71,7 @@ def main(argv: list[str] | None = None) -> int:
     result = run_build_prediction_review(
         predictions_path=args.input,
         review_path=args.output,
+        confusion_path=args.confusion_output,
         summary_path=args.summary,
         reports_path=args.reports,
         reference_path=args.reference,

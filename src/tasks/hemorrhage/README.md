@@ -26,6 +26,7 @@ python3 -m src.tasks.hemorrhage.run_case_pipeline
 - `data/inspection/` — structural + label analytics
 - `data/outputs/hemorrhage_case_predictions.csv` — one row per case
 - `data/outputs/hemorrhage_prediction_review.csv` — unified qualitative review table
+- `data/outputs/hemorrhage_confusion_review.csv` — compact TP/TN/FP/FN overview
 
 ## Prediction review export (qualitative analysis)
 

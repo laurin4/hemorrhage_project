@@ -18,6 +18,7 @@ import pandas as pd
 from src.core.case.models import ClinicalCase
 from src.pipeline.paths import (
     HEMORRHAGE_CASE_PREDICTIONS_PATH,
+    HEMORRHAGE_CONFUSION_REVIEW_PATH,
     HEMORRHAGE_PREDICTION_REVIEW_PATH,
     HEMORRHAGE_PREDICTION_REVIEW_SUMMARY_PATH,
 )
@@ -65,10 +66,47 @@ REFERENCE_STATUS_VALUES = frozenset(
 
 PVR_VALUES = frozenset({"TP", "TN", "FP", "FN", "reference_unknown", "prediction_missing"})
 
+CONFUSION_CSV_COLUMNS: List[str] = [
+    "case_id",
+    "excel_pid",
+    "excel_opdat",
+    "reference_status",
+    "reference_haemorrhagisch",
+    "reference_nicht_haemorrhagisch",
+    "reference_verify_vaskulaer",
+    "status",
+    "klasse",
+    "label",
+    "sicherheit",
+    "prediction_vs_reference",
+    "error_type",
+    "high_risk_mismatch",
+    "needs_manual_review",
+]
+
+ERROR_TYPE_BY_PVR: Dict[str, str] = {
+    "TP": "correct_positive",
+    "TN": "correct_negative",
+    "FP": "false_positive",
+    "FN": "false_negative",
+    "reference_unknown": "unknown_reference",
+    "prediction_missing": "pipeline_failure",
+}
+
+CONFUSION_SORT_ORDER: Dict[str, int] = {
+    "FN": 0,
+    "FP": 1,
+    "prediction_missing": 2,
+    "reference_unknown": 3,
+    "TP": 4,
+    "TN": 5,
+}
+
 
 @dataclass
 class PredictionReviewResult:
     review_path: Path
+    confusion_path: Path
     summary_path: Path
     rows_written: int = 0
     summary_lines: List[str] = field(default_factory=list)
@@ -255,6 +293,40 @@ def _case_previews(case: Optional[ClinicalCase]) -> Dict[str, str]:
     }
 
 
+def derive_error_type(prediction_vs_reference: str) -> str:
+    return ERROR_TYPE_BY_PVR.get(
+        str(prediction_vs_reference or "").strip(),
+        "unknown_reference",
+    )
+
+
+def build_confusion_row(review_row: Dict[str, Any]) -> Dict[str, Any]:
+    """Compact confusion-matrix style row (no long text fields)."""
+    pvr = str(review_row.get("prediction_vs_reference", "") or "").strip()
+    return {
+        "case_id": review_row.get("case_id", ""),
+        "excel_pid": review_row.get("excel_pid", ""),
+        "excel_opdat": review_row.get("excel_opdat", ""),
+        "reference_status": review_row.get("reference_status", ""),
+        "reference_haemorrhagisch": review_row.get("reference_haemorrhagisch", ""),
+        "reference_nicht_haemorrhagisch": review_row.get("reference_nicht_haemorrhagisch", ""),
+        "reference_verify_vaskulaer": review_row.get("reference_verify_vaskulaer", ""),
+        "status": review_row.get("status", ""),
+        "klasse": review_row.get("klasse", ""),
+        "label": review_row.get("label", ""),
+        "sicherheit": review_row.get("sicherheit", ""),
+        "prediction_vs_reference": pvr,
+        "error_type": derive_error_type(pvr),
+        "high_risk_mismatch": review_row.get("high_risk_mismatch", False),
+        "needs_manual_review": review_row.get("needs_manual_review", False),
+    }
+
+
+def _confusion_sort_priority(row: Dict[str, Any]) -> Tuple[int, str]:
+    pvr = str(row.get("prediction_vs_reference", "") or "").strip()
+    return CONFUSION_SORT_ORDER.get(pvr, 9), str(row.get("case_id", ""))
+
+
 def _sort_priority(row: Dict[str, Any]) -> Tuple[int, str]:
     pvr = str(row.get("prediction_vs_reference", ""))
     ref_status = str(row.get("reference_status", ""))
@@ -361,6 +433,12 @@ def build_prediction_review_summary(review_rows: Sequence[Dict[str, Any]]) -> Li
     tn = sum(1 for r in review_rows if r.get("prediction_vs_reference") == "TN")
     fp = sum(1 for r in review_rows if r.get("prediction_vs_reference") == "FP")
     fn = sum(1 for r in review_rows if r.get("prediction_vs_reference") == "FN")
+    prediction_missing = sum(
+        1 for r in review_rows if r.get("prediction_vs_reference") == "prediction_missing"
+    )
+    reference_unknown_pvr = sum(
+        1 for r in review_rows if r.get("prediction_vs_reference") == "reference_unknown"
+    )
     verify_only = sum(1 for r in review_rows if r.get("reference_status") == "verify_only")
     unknown = sum(1 for r in review_rows if r.get("reference_status") == "unknown")
     inconsistent = sum(1 for r in review_rows if r.get("reference_status") == "inconsistent")
@@ -380,8 +458,10 @@ def build_prediction_review_summary(review_rows: Sequence[Dict[str, Any]]) -> Li
         f"TN={tn}",
         f"FP={fp}",
         f"FN={fn}",
+        f"prediction_missing={prediction_missing}",
+        f"reference_unknown={reference_unknown_pvr}",
         f"verify_only={verify_only} (excluded from performance stats)",
-        f"reference_unknown={unknown}",
+        f"reference_status_unknown={unknown}",
         f"reference_inconsistent={inconsistent}",
         f"parse_failed={parse_failed}",
         f"llm_failed={llm_failed}",
@@ -401,6 +481,7 @@ def run_build_prediction_review(
     *,
     predictions_path: Optional[Path] = None,
     review_path: Optional[Path] = None,
+    confusion_path: Optional[Path] = None,
     summary_path: Optional[Path] = None,
     reports_path: Optional[Path] = None,
     reference_path: Optional[Path] = None,
@@ -410,8 +491,13 @@ def run_build_prediction_review(
 ) -> PredictionReviewResult:
     pred_path = predictions_path or HEMORRHAGE_CASE_PREDICTIONS_PATH
     out_path = review_path or HEMORRHAGE_PREDICTION_REVIEW_PATH
+    conf_path = confusion_path or HEMORRHAGE_CONFUSION_REVIEW_PATH
     sum_path = summary_path or HEMORRHAGE_PREDICTION_REVIEW_SUMMARY_PATH
-    result = PredictionReviewResult(review_path=out_path, summary_path=sum_path)
+    result = PredictionReviewResult(
+        review_path=out_path,
+        confusion_path=conf_path,
+        summary_path=sum_path,
+    )
 
     if not pred_path.exists():
         result.errors.append(f"Predictions file missing: {pred_path}")
@@ -452,24 +538,35 @@ def run_build_prediction_review(
             or r["status"] in ("parse_failed", "llm_failed")
         ]
 
+    summary_rows = list(review_rows)
+
+    confusion_rows = [build_confusion_row(r) for r in review_rows]
+    confusion_rows.sort(key=_confusion_sort_priority)
+
     review_rows.sort(key=_sort_priority)
 
     if limit is not None and limit > 0:
         review_rows = review_rows[:limit]
+        confusion_rows = confusion_rows[:limit]
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    conf_path.parent.mkdir(parents=True, exist_ok=True)
     sum_path.parent.mkdir(parents=True, exist_ok=True)
 
     pd.DataFrame(review_rows, columns=REVIEW_CSV_COLUMNS).to_csv(
         out_path, index=False, encoding="utf-8"
     )
+    pd.DataFrame(confusion_rows, columns=CONFUSION_CSV_COLUMNS).to_csv(
+        conf_path, index=False, encoding="utf-8"
+    )
     result.rows_written = len(review_rows)
 
-    summary_lines = build_prediction_review_summary(review_rows)
+    summary_lines = build_prediction_review_summary(summary_rows)
     sum_path.write_text("\n".join(summary_lines) + "\n", encoding="utf-8")
     result.summary_lines = summary_lines + [
         "",
         f"review_csv={out_path}",
+        f"confusion_csv={conf_path}",
         f"summary_txt={sum_path}",
         f"rows_written={result.rows_written}",
     ]

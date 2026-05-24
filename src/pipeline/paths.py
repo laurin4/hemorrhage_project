@@ -269,6 +269,7 @@ REFERENCE_LABEL_ANALYSIS_SUMMARY_PATH = INSPECTION_DIR / "reference_label_analys
 DATA_OUTPUTS_DIR = DATA_DIR / "outputs"
 HEMORRHAGE_CASE_PREDICTIONS_PATH = DATA_OUTPUTS_DIR / "hemorrhage_case_predictions.csv"
 HEMORRHAGE_PREDICTION_REVIEW_PATH = DATA_OUTPUTS_DIR / "hemorrhage_prediction_review.csv"
+HEMORRHAGE_CONFUSION_REVIEW_PATH = DATA_OUTPUTS_DIR / "hemorrhage_confusion_review.csv"
 HEMORRHAGE_PREDICTION_REVIEW_SUMMARY_PATH = (
     DATA_OUTPUTS_DIR / "hemorrhage_prediction_review_summary.txt"
 )

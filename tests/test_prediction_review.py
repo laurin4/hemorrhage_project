@@ -6,9 +6,10 @@ from pathlib import Path
 import pandas as pd
 
 from src.tasks.hemorrhage.export.prediction_review import (
+    CONFUSION_CSV_COLUMNS,
     REVIEW_CSV_COLUMNS,
-    build_review_row,
     compute_prediction_vs_reference,
+    derive_error_type,
     derive_reference_status,
     flatten_evidence_summary,
     run_build_prediction_review,
@@ -88,20 +89,27 @@ def test_build_prediction_review_export(tmp_path: Path):
     )
     pred_path = tmp_path / "preds.csv"
     out_path = tmp_path / "review.csv"
+    conf_path = tmp_path / "confusion.csv"
     sum_path = tmp_path / "summary.txt"
     preds.to_csv(pred_path, index=False)
 
     result = run_build_prediction_review(
         predictions_path=pred_path,
         review_path=out_path,
+        confusion_path=conf_path,
         summary_path=sum_path,
     )
     assert result.rows_written == 2
     assert out_path.exists()
+    assert conf_path.exists()
     assert sum_path.exists()
 
     review = pd.read_csv(out_path)
     assert list(review.columns) == REVIEW_CSV_COLUMNS
+    confusion = pd.read_csv(conf_path)
+    assert list(confusion.columns) == CONFUSION_CSV_COLUMNS
+    assert "begruendung" not in confusion.columns
+    assert "evidence_summary" not in confusion.columns
     by_id = {r["case_id"]: r for _, r in review.iterrows()}
     assert by_id["case_1__2024-01-01__F1"]["prediction_vs_reference"] == "TP"
     assert by_id["case_2__2024-01-02__F2"]["reference_status"] == "verify_only"
@@ -110,6 +118,66 @@ def test_build_prediction_review_export(tmp_path: Path):
     summary = sum_path.read_text(encoding="utf-8")
     assert "NOT final evaluation" in summary
     assert "verify_only=1" in summary
+    assert "prediction_missing=" in summary
+    assert "reference_unknown=" in summary
+
+
+def test_error_type_mapping():
+    assert derive_error_type("TP") == "correct_positive"
+    assert derive_error_type("FN") == "false_negative"
+    assert derive_error_type("reference_unknown") == "unknown_reference"
+    assert derive_error_type("prediction_missing") == "pipeline_failure"
+
+
+def test_confusion_sort_fn_before_tp(tmp_path: Path):
+    preds = pd.DataFrame(
+        [
+            {
+                "case_id": "tp_case",
+                "excel_pid": "1",
+                "excel_opdat": "2024-01-01",
+                "opber_fallnr": "F1",
+                "status": "success",
+                "klasse": 1,
+                "label": "hämorrhagisch",
+                "sicherheit": "hoch",
+                "begruendung": "",
+                "evidenz_json": "[]",
+                "reference_haemorrhagisch": "1",
+                "reference_nicht_haemorrhagisch": "0",
+                "reference_verify_vaskulaer": "",
+            },
+            {
+                "case_id": "fn_case",
+                "excel_pid": "2",
+                "excel_opdat": "2024-01-02",
+                "opber_fallnr": "F2",
+                "status": "success",
+                "klasse": 0,
+                "label": "nicht_hämorrhagisch",
+                "sicherheit": "hoch",
+                "begruendung": "",
+                "evidenz_json": "[]",
+                "reference_haemorrhagisch": "1",
+                "reference_nicht_haemorrhagisch": "0",
+                "reference_verify_vaskulaer": "",
+            },
+        ]
+    )
+    pred_path = tmp_path / "preds.csv"
+    conf_path = tmp_path / "confusion.csv"
+    preds.to_csv(pred_path, index=False)
+
+    run_build_prediction_review(
+        predictions_path=pred_path,
+        review_path=tmp_path / "review.csv",
+        confusion_path=conf_path,
+        summary_path=tmp_path / "summary.txt",
+    )
+    confusion = pd.read_csv(conf_path)
+    assert confusion.iloc[0]["prediction_vs_reference"] == "FN"
+    assert confusion.iloc[0]["error_type"] == "false_negative"
+    assert confusion.iloc[1]["prediction_vs_reference"] == "TP"
 
 
 def test_only_mismatches_filter(tmp_path: Path):
@@ -153,6 +221,7 @@ def test_only_mismatches_filter(tmp_path: Path):
     result = run_build_prediction_review(
         predictions_path=pred_path,
         review_path=tmp_path / "review.csv",
+        confusion_path=tmp_path / "confusion.csv",
         summary_path=tmp_path / "summary.txt",
         only_mismatches=True,
     )
