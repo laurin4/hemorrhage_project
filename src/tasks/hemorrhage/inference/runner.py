@@ -60,6 +60,7 @@ PREDICTION_CSV_COLUMNS: List[str] = [
     "status",
     "klasse",
     "label",
+    "haemorrhage_subtype",
     "sicherheit",
     "begruendung",
     "evidenz_json",
@@ -112,6 +113,7 @@ def _base_row(case: ClinicalCase, ref_lookup: ReferenceLookup) -> Dict[str, Any]
         "status": "",
         "klasse": "",
         "label": "",
+        "haemorrhage_subtype": "",
         "sicherheit": "",
         "begruendung": "",
         "evidenz_json": "[]",
@@ -131,6 +133,7 @@ def _base_row(case: ClinicalCase, ref_lookup: ReferenceLookup) -> Dict[str, Any]
 def _apply_prediction(row: Dict[str, Any], pred: Dict[str, Any]) -> None:
     row["klasse"] = pred["klasse"] if pred["klasse"] is not None else ""
     row["label"] = pred.get("label", "")
+    row["haemorrhage_subtype"] = pred.get("haemorrhage_subtype") or ""
     row["sicherheit"] = pred.get("sicherheit", "")
     row["begruendung"] = pred.get("begruendung", "")
     row["evidenz_json"] = evidenz_to_json(pred.get("evidenz") or [])

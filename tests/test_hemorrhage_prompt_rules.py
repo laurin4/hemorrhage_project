@@ -39,6 +39,23 @@ def test_system_prompt_contains_preoperative_bleeding_rule():
     assert "Blutung 1998" in prompt
 
 
+def test_system_prompt_requests_two_level_classification():
+    prompt = load_system_prompt()
+    assert "hämorrhagisch" in prompt
+    assert "nicht_hämorrhagisch" in prompt
+    assert "haemorrhage_subtype" in prompt
+    for subtype in ("akut", "historisch", "nicht_akut"):
+        assert subtype in prompt
+
+
+def test_system_prompt_states_verify_vaskulaer_is_metadata():
+    prompt = load_system_prompt()
+    assert "Verify_Vaskulär" in prompt
+    lowered = prompt.lower()
+    assert "keine klassifikationsklasse" in lowered or "keine klasse" in lowered
+    assert "nicht beeinflussen" in lowered
+
+
 def test_system_prompt_contains_cavernoma_bleeding_rule():
     prompt = load_system_prompt()
     assert "KAVERNOM" in prompt

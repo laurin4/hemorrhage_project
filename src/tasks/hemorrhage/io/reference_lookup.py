@@ -75,6 +75,9 @@ def build_reference_lookup(
             "reference_nicht_haemorrhagisch": _cell_raw(row, non_col),
             "reference_verify_vaskulaer": _cell_raw(row, ver_col),
             "reference_label_status": assign_reference_label_stratum(h_state, n_state),
+            # No validated reference subtype labels exist yet; kept empty as metadata
+            # placeholder until a future reference column is added.
+            "reference_haemorrhage_subtype": "",
         }
 
     return lookup, errors, resolved_path
@@ -93,5 +96,6 @@ def reference_fields_for_case(
             "reference_nicht_haemorrhagisch": "",
             "reference_verify_vaskulaer": "",
             "reference_label_status": "reference_not_found",
+            "reference_haemorrhage_subtype": "",
         },
     )

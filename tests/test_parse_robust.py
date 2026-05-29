@@ -175,3 +175,67 @@ def test_nonrecoverable_malformed_json_still_fails():
     result = parse_hemorrhage_response(raw, context="bad")
     assert not result.success
     assert result.parse_error_reason in ("json_decode_error", "no_json_object_found")
+
+
+def test_subtype_akut_parsed():
+    payload = _valid_payload(haemorrhage_subtype="akut")
+    result = parse_hemorrhage_response(json.dumps(payload), context="sub_akut")
+    assert result.success
+    assert result.prediction["haemorrhage_subtype"] == "akut"
+
+
+def test_subtype_historisch_parsed():
+    payload = _valid_payload(haemorrhage_subtype="historisch")
+    result = parse_hemorrhage_response(json.dumps(payload), context="sub_hist")
+    assert result.success
+    assert result.prediction["haemorrhage_subtype"] == "historisch"
+
+
+def test_subtype_nicht_akut_parsed():
+    payload = _valid_payload(haemorrhage_subtype="nicht_akut")
+    result = parse_hemorrhage_response(json.dumps(payload), context="sub_na")
+    assert result.success
+    assert result.prediction["haemorrhage_subtype"] == "nicht_akut"
+
+
+def test_subtype_normalizes_english_and_chronic_variants():
+    for raw_val, expected in [
+        ("acute", "akut"),
+        ("historical", "historisch"),
+        ("history", "historisch"),
+        ("non_acute", "nicht_akut"),
+        ("nicht-akut", "nicht_akut"),
+        ("chronisch", "nicht_akut"),
+        ("chronic", "nicht_akut"),
+    ]:
+        payload = _valid_payload(haemorrhage_subtype=raw_val)
+        result = parse_hemorrhage_response(json.dumps(payload), context="sub_norm")
+        assert result.success
+        assert result.prediction["haemorrhage_subtype"] == expected, raw_val
+
+
+def test_subtype_null_allowed_for_non_hemorrhagic():
+    payload = _valid_payload(
+        klasse=0, label="nicht_hämorrhagisch", haemorrhage_subtype=None
+    )
+    result = parse_hemorrhage_response(json.dumps(payload), context="sub_null")
+    assert result.success
+    assert result.prediction["haemorrhage_subtype"] is None
+
+
+def test_non_hemorrhagic_ignores_provided_subtype():
+    payload = _valid_payload(
+        klasse=0, label="nicht_hämorrhagisch", haemorrhage_subtype="akut"
+    )
+    result = parse_hemorrhage_response(json.dumps(payload), context="sub_force_null")
+    assert result.success
+    assert result.prediction["haemorrhage_subtype"] is None
+
+
+def test_missing_subtype_for_hemorrhagic_does_not_crash():
+    payload = _valid_payload()  # hämorrhagisch, no subtype field
+    payload.pop("haemorrhage_subtype", None)
+    result = parse_hemorrhage_response(json.dumps(payload), context="sub_missing")
+    assert result.success
+    assert result.prediction["haemorrhage_subtype"] == "unbekannt"
+    assert any("haemorrhage_subtype" in r for r in result.prediction["unsicherheitsgruende"])

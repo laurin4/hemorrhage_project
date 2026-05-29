@@ -10,6 +10,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 VALID_SICHERHEIT = frozenset({"niedrig", "mittel", "hoch", "unbekannt"})
 
+VALID_HAEMORRHAGE_SUBTYPES = frozenset({"akut", "historisch", "nicht_akut"})
+SUBTYPE_UNKNOWN = "unbekannt"
+
 _USZ_TOKENS_TO_STRIP = (
     "<start_of_turn>user",
     "<start_of_turn>model",
@@ -45,6 +48,7 @@ def _empty_prediction() -> Dict[str, Any]:
     return {
         "klasse": None,
         "label": "",
+        "haemorrhage_subtype": None,
         "sicherheit": "unbekannt",
         "begruendung": "",
         "evidenz": [],
@@ -307,6 +311,58 @@ def normalize_label(label: object) -> Optional[str]:
     return None
 
 
+def normalize_haemorrhage_subtype(value: object) -> Optional[str]:
+    """
+    Map subtype variants to canonical akut / historisch / nicht_akut.
+
+    Returns None if the value is empty/null/unrecognized (caller decides default).
+    """
+    if value is None:
+        return None
+    key = _normalize_label_key(str(value))
+    if not key or key in ("nan", "none", "null", "na"):
+        return None
+
+    # nicht_akut variants: nicht akut, nicht-akut, non_acute, chronisch, chronic, subakut(?)
+    if key in ("nicht_akut", "non_acute", "nonacute", "chronisch", "chronic", "chronisch_akut"):
+        return "nicht_akut"
+    if key.startswith("nicht_akut") or "non_acut" in key or "chronisch" in key or "chronic" in key:
+        return "nicht_akut"
+
+    # historisch variants: history, historical, historisch, anamnestisch
+    if key.startswith("historisch") or key.startswith("historic") or key in ("history", "historical", "anamnestisch"):
+        return "historisch"
+
+    # akut variants: akut, acute, akut_subakut, subakut
+    if key.startswith("akut") or key.startswith("acut") or key.startswith("subakut") or key.startswith("subacut"):
+        return "akut"
+
+    return None
+
+
+def _resolve_haemorrhage_subtype(
+    raw_subtype: object,
+    label: Optional[str],
+) -> Tuple[Optional[str], bool]:
+    """
+    Resolve subtype based on label.
+
+    Returns (subtype_value, subtype_uncertain).
+    - non_hemorrhagic → (None, False)
+    - hemorrhagic with valid subtype → (subtype, False)
+    - hemorrhagic with missing/invalid subtype → ("unbekannt", True)
+    """
+    if label == "nicht_hämorrhagisch":
+        return None, False
+
+    normalized = normalize_haemorrhage_subtype(raw_subtype)
+    if normalized in VALID_HAEMORRHAGE_SUBTYPES:
+        return normalized, False
+
+    # hemorrhagic but subtype unknown/missing
+    return SUBTYPE_UNKNOWN, True
+
+
 def _parse_klasse_value(value: object) -> Optional[int]:
     if value is None:
         return None
@@ -463,6 +519,17 @@ def parse_hemorrhage_response(raw_output: str, *, context: str) -> HemorrhagePar
     out["unsicherheitsgruende"] = _normalize_unsicherheitsgruende(
         parsed.get("unsicherheitsgruende")
     )
+
+    subtype, subtype_uncertain = _resolve_haemorrhage_subtype(
+        parsed.get("haemorrhage_subtype"), label
+    )
+    out["haemorrhage_subtype"] = subtype
+    if subtype_uncertain:
+        reasons = out["unsicherheitsgruende"]
+        note = "haemorrhage_subtype fehlt oder unklar (auf 'unbekannt' gesetzt)"
+        if note not in reasons:
+            reasons.append(note)
+        out["unsicherheitsgruende"] = reasons
 
     return _ok(out, parse_repair_applied=repair)
 

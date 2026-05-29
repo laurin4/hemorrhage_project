@@ -22,6 +22,7 @@ from src.pipeline.paths import (
     HEMORRHAGE_PREDICTION_REVIEW_PATH,
 )
 from src.tasks.hemorrhage.evaluation.report_format import (
+    SUBTYPE_ORDER,
     EvaluationReportPaths,
     build_readable_reports,
     format_pct,
@@ -30,6 +31,9 @@ from src.tasks.hemorrhage.export.prediction_review import compute_prediction_vs_
 
 LABELED_REFERENCE_STATUSES = frozenset({"hemorrhagic", "non_hemorrhagic"})
 EVALUATED_PVR_VALUES = frozenset({"TP", "TN", "FP", "FN"})
+
+SUBTYPE_DISTRIBUTION_COLUMNS = ["haemorrhage_subtype", "count"]
+SUBTYPE_BY_REFERENCE_COLUMNS = ["reference_status", "haemorrhage_subtype", "count"]
 
 ERROR_CASE_COLUMNS: List[str] = [
     "case_id",
@@ -80,6 +84,8 @@ class EvaluationResult:
     metrics_md_path: Path
     confusion_matrix_path: Path
     error_cases_path: Path
+    subtype_distribution_path: Optional[Path] = None
+    subtype_by_reference_path: Optional[Path] = None
     summary_lines: List[str] = field(default_factory=list)
     sensitivity_summary_lines: List[str] = field(default_factory=list)
     errors: List[str] = field(default_factory=list)
@@ -320,6 +326,68 @@ def build_error_cases_df(review_df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=ERROR_CASE_COLUMNS)
 
 
+def _hemorrhagic_mask(review_df: pd.DataFrame) -> pd.Series:
+    """Rows predicted hämorrhagisch (klasse==1 or label hämorrhagisch)."""
+    if review_df.empty:
+        return pd.Series(dtype=bool)
+    label = review_df.get("label", pd.Series("", index=review_df.index)).astype(str)
+    klasse = review_df.get("klasse", pd.Series("", index=review_df.index)).apply(_parse_klasse)
+    return (label == "hämorrhagisch") | (klasse == 1)
+
+
+def _normalized_subtype_series(review_df: pd.DataFrame, mask: pd.Series) -> pd.Series:
+    """Predicted subtype for hämorrhagisch rows, blanks mapped to 'unbekannt'."""
+    subset = review_df[mask]
+    raw = subset.get(
+        "predicted_haemorrhage_subtype", pd.Series("", index=subset.index)
+    ).astype(str).str.strip()
+    raw = raw.replace({"": "unbekannt", "nan": "unbekannt", "none": "unbekannt", "null": "unbekannt"})
+    return raw
+
+
+def compute_subtype_counts(review_df: pd.DataFrame) -> Dict[str, int]:
+    """Predicted subtype counts among hämorrhagisch predictions (descriptive only)."""
+    counts: Dict[str, int] = {k: 0 for k in SUBTYPE_ORDER}
+    if review_df.empty:
+        return counts
+    mask = _hemorrhagic_mask(review_df)
+    subtypes = _normalized_subtype_series(review_df, mask)
+    for value, count in subtypes.value_counts().items():
+        key = value if value in counts else "unbekannt"
+        counts[key] = counts.get(key, 0) + int(count)
+    return counts
+
+
+def build_subtype_distribution_rows(review_df: pd.DataFrame) -> List[Dict[str, Any]]:
+    counts = compute_subtype_counts(review_df)
+    return [{"haemorrhage_subtype": k, "count": counts.get(k, 0)} for k in SUBTYPE_ORDER]
+
+
+def build_subtype_by_reference_rows(review_df: pd.DataFrame) -> List[Dict[str, Any]]:
+    """Cross-tab of predicted subtype vs reference_status among hämorrhagisch predictions."""
+    if review_df.empty:
+        return []
+    mask = _hemorrhagic_mask(review_df)
+    subset = review_df[mask].copy()
+    if subset.empty:
+        return []
+    subset["__subtype"] = _normalized_subtype_series(review_df, mask).values
+    subset["__ref"] = subset.get(
+        "reference_status", pd.Series("", index=subset.index)
+    ).astype(str).replace({"": "unknown", "nan": "unknown"})
+    grouped = (
+        subset.groupby(["__ref", "__subtype"]).size().reset_index(name="count")
+    )
+    return [
+        {
+            "reference_status": r["__ref"],
+            "haemorrhage_subtype": r["__subtype"],
+            "count": int(r["count"]),
+        }
+        for _, r in grouped.iterrows()
+    ]
+
+
 def _format_metric_value(value: Any) -> str:
     if value is None or (isinstance(value, float) and pd.isna(value)):
         return "n/a"
@@ -353,11 +421,13 @@ def _write_readable_reports(
     md_path: Path,
     *,
     include_verify_as_negative: bool = False,
+    subtype_counts: Optional[Dict[str, int]] = None,
 ) -> None:
     txt_report, md_report = build_readable_reports(
         metrics,
         paths,
         include_verify_as_negative=include_verify_as_negative,
+        subtype_counts=subtype_counts,
     )
     txt_path.write_text(txt_report, encoding="utf-8")
     md_path.write_text(md_report, encoding="utf-8")
@@ -628,6 +698,65 @@ def plot_evaluated_vs_excluded(review_df: pd.DataFrame, out_path: Path) -> None:
     plt.close(fig)
 
 
+def plot_subtype_distribution(review_df: pd.DataFrame, out_path: Path) -> None:
+    plt, _ = _init_matplotlib()
+    counts = compute_subtype_counts(review_df)
+    labels = SUBTYPE_ORDER
+    values = [counts.get(k, 0) for k in labels]
+    fig, ax = plt.subplots(figsize=(6.5, 4.8))
+    bars = ax.bar(labels, values, color="#8b5cf6")
+    ax.set_title("Predicted haemorrhage subtype distribution\n(hämorrhagisch predictions, descriptive only)")
+    ax.set_xlabel("haemorrhage_subtype")
+    ax.set_ylabel("Case count")
+    ax.tick_params(axis="x", rotation=15)
+    _add_bar_labels(ax, bars)
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=120)
+    plt.close(fig)
+
+
+def plot_subtype_by_reference_status(review_df: pd.DataFrame, out_path: Path) -> None:
+    plt, np = _init_matplotlib()
+    rows = build_subtype_by_reference_rows(review_df)
+    if not rows:
+        fig, ax = plt.subplots(figsize=(6.0, 4.0))
+        ax.text(0.5, 0.5, "No hämorrhagisch predictions", ha="center", va="center")
+        ax.axis("off")
+        fig.savefig(out_path, dpi=120)
+        plt.close(fig)
+        return
+
+    df = pd.DataFrame(rows)
+    pivot = (
+        df.pivot_table(
+            index="reference_status",
+            columns="haemorrhage_subtype",
+            values="count",
+            aggfunc="sum",
+            fill_value=0,
+        )
+        .reindex(columns=SUBTYPE_ORDER, fill_value=0)
+    )
+    ref_statuses = list(pivot.index)
+    x = np.arange(len(ref_statuses))
+    n_sub = len(SUBTYPE_ORDER)
+    width = 0.8 / n_sub
+    colors = ["#ef4444", "#f59e0b", "#3b82f6", "#94a3b8"]
+    fig, ax = plt.subplots(figsize=(8.5, 4.8))
+    for i, subtype in enumerate(SUBTYPE_ORDER):
+        vals = pivot[subtype].values
+        ax.bar(x + (i - (n_sub - 1) / 2) * width, vals, width, label=subtype, color=colors[i % len(colors)])
+    ax.set_xticks(x)
+    ax.set_xticklabels(ref_statuses, rotation=20)
+    ax.set_title("Predicted subtype by reference_status\n(hämorrhagisch predictions, descriptive only)")
+    ax.set_xlabel("reference_status")
+    ax.set_ylabel("Case count")
+    ax.legend(title="subtype", fontsize=8)
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=120)
+    plt.close(fig)
+
+
 def generate_plots(
     review_df: pd.DataFrame,
     confusion_df: pd.DataFrame,
@@ -646,6 +775,8 @@ def generate_plots(
         plots_dir / "error_type_distribution.png",
         plots_dir / "confidence_by_correctness.png",
         plots_dir / "evaluated_vs_excluded_cases.png",
+        plots_dir / "predicted_haemorrhage_subtype_distribution.png",
+        plots_dir / "subtype_by_reference_status.png",
     ]
 
     try:
@@ -660,6 +791,8 @@ def generate_plots(
         plot_error_type_distribution(confusion_df, paths[3])
         plot_confidence_by_correctness(review_df, paths[4])
         plot_evaluated_vs_excluded(review_df, paths[5])
+        plot_subtype_distribution(review_df, paths[6])
+        plot_subtype_by_reference_status(review_df, paths[7])
     except ImportError as exc:
         warnings.append(f"Plots skipped (matplotlib unavailable): {exc}")
         return [], warnings
@@ -712,6 +845,7 @@ def run_evaluate_predictions(
     plots_dir.mkdir(parents=True, exist_ok=True)
 
     metrics = build_metrics_record(review_df, include_verify_as_negative=False)
+    subtype_counts = compute_subtype_counts(review_df)
     report_paths = _report_paths(out_dir, review_path=rev_path, confusion_path=conf_path)
     _write_readable_reports(
         metrics,
@@ -719,7 +853,19 @@ def run_evaluate_predictions(
         result.metrics_txt_path,
         result.metrics_md_path,
         include_verify_as_negative=False,
+        subtype_counts=subtype_counts,
     )
+
+    result.subtype_distribution_path = out_dir / "hemorrhage_subtype_distribution.csv"
+    result.subtype_by_reference_path = out_dir / "hemorrhage_subtype_by_reference_status.csv"
+    pd.DataFrame(
+        build_subtype_distribution_rows(review_df),
+        columns=SUBTYPE_DISTRIBUTION_COLUMNS,
+    ).to_csv(result.subtype_distribution_path, index=False, encoding="utf-8")
+    pd.DataFrame(
+        build_subtype_by_reference_rows(review_df),
+        columns=SUBTYPE_BY_REFERENCE_COLUMNS,
+    ).to_csv(result.subtype_by_reference_path, index=False, encoding="utf-8")
     result.summary_lines = build_console_summary_lines(
         metrics,
         txt_path=result.metrics_txt_path,
@@ -758,6 +904,7 @@ def run_evaluate_predictions(
             sens_txt,
             sens_md,
             include_verify_as_negative=True,
+            subtype_counts=subtype_counts,
         )
         result.sensitivity_summary_lines = build_console_summary_lines(
             sens_metrics,
@@ -799,6 +946,8 @@ def run_evaluate_predictions(
             f"metrics_md={result.metrics_md_path}",
             f"confusion_matrix={result.confusion_matrix_path}",
             f"error_cases={result.error_cases_path}",
+            f"subtype_distribution={result.subtype_distribution_path}",
+            f"subtype_by_reference_status={result.subtype_by_reference_path}",
             f"plots_dir={plots_dir}",
         ]
     )

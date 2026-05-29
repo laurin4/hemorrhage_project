@@ -9,8 +9,10 @@ import pytest
 from src.tasks.hemorrhage.evaluation.runner import (
     build_error_cases_df,
     build_metrics_record,
+    build_subtype_by_reference_rows,
     compute_binary_metrics,
     compute_counts,
+    compute_subtype_counts,
     run_evaluate_predictions,
     safe_div,
 )
@@ -237,6 +239,80 @@ def test_error_cases_include_fp_fn_and_missing():
     errors = build_error_cases_df(df)
     assert len(errors) == 4
     assert set(errors["case_id"]) == {"c3", "c4", "c7", "c8"}
+
+
+def _subtype_review_rows() -> pd.DataFrame:
+    df = _sample_review_rows()
+    df["predicted_haemorrhage_subtype"] = ""
+    # c1 (TP, hämorrhagisch) → akut, c4 (FP, hämorrhagisch) → nicht_akut
+    df.loc[df["case_id"] == "c1", "predicted_haemorrhage_subtype"] = "akut"
+    df.loc[df["case_id"] == "c4", "predicted_haemorrhage_subtype"] = "nicht_akut"
+    return df
+
+
+def test_subtype_counts_generated():
+    df = _subtype_review_rows()
+    counts = compute_subtype_counts(df)
+    assert counts["akut"] == 1
+    assert counts["nicht_akut"] == 1
+    assert counts["historisch"] == 0
+    # only hämorrhagisch rows are counted (c1, c4); none missing here
+    assert counts["unbekannt"] == 0
+
+
+def test_subtype_missing_counts_as_unbekannt():
+    df = _sample_review_rows()  # hämorrhagisch rows have no subtype column
+    counts = compute_subtype_counts(df)
+    # c1 (TP) and c4 (FP) are hämorrhagisch with no subtype → unbekannt
+    assert counts["unbekannt"] == 2
+    assert counts["akut"] == 0
+
+
+def test_subtype_does_not_affect_binary_metrics():
+    base = compute_counts(_sample_review_rows(), include_verify_as_negative=False)
+    with_subtype = compute_counts(_subtype_review_rows(), include_verify_as_negative=False)
+    for key in ("TP", "TN", "FP", "FN", "evaluated_cases", "labeled_cases"):
+        assert base[key] == with_subtype[key]
+
+
+def test_subtype_by_reference_only_hemorrhagic_predictions():
+    rows = build_subtype_by_reference_rows(_subtype_review_rows())
+    # both hämorrhagisch predictions: c1 ref hemorrhagic/akut, c4 ref non_hemorrhagic/nicht_akut
+    keys = {(r["reference_status"], r["haemorrhage_subtype"]) for r in rows}
+    assert ("hemorrhagic", "akut") in keys
+    assert ("non_hemorrhagic", "nicht_akut") in keys
+
+
+def test_subtype_outputs_written(tmp_path: Path):
+    review_path = tmp_path / "review.csv"
+    confusion_path = tmp_path / "confusion.csv"
+    out_dir = tmp_path / "evaluation"
+
+    df = _subtype_review_rows()
+    df.to_csv(review_path, index=False)
+    df[["case_id", "error_type", "prediction_vs_reference"]].to_csv(confusion_path, index=False)
+
+    def _fake_plots(review_df, confusion_df, counts, plots_dir, *, include_verify_as_negative=False):
+        plots_dir.mkdir(parents=True, exist_ok=True)
+        return [], []
+
+    with patch(
+        "src.tasks.hemorrhage.evaluation.runner.generate_plots",
+        side_effect=_fake_plots,
+    ):
+        result = run_evaluate_predictions(
+            review_path=review_path,
+            confusion_path=confusion_path,
+            output_dir=out_dir,
+        )
+    assert not result.errors
+    assert (out_dir / "hemorrhage_subtype_distribution.csv").exists()
+    assert (out_dir / "hemorrhage_subtype_by_reference_status.csv").exists()
+    summary = (out_dir / "hemorrhage_metrics_summary.txt").read_text(encoding="utf-8")
+    assert "Hemorrhage subtype analysis" in summary
+    assert "akut" in summary
+    md = (out_dir / "hemorrhage_metrics_summary.md").read_text(encoding="utf-8")
+    assert "Hemorrhage subtype analysis" in md
 
 
 def test_build_metrics_record_rounding():

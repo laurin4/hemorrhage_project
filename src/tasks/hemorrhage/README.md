@@ -71,9 +71,11 @@ python3 -m src.tasks.hemorrhage.evaluate_predictions --include-verify-as-negativ
 - `hemorrhage_metrics_summary.txt` / `.md` — human-readable reports for meetings / thesis notes
 - `hemorrhage_confusion_matrix.csv` — aggregated confusion matrix
 - `hemorrhage_error_cases.csv` — FP/FN and labeled pipeline failures
-- `plots/` — confusion matrix, distributions, confidence by correctness
+- `hemorrhage_subtype_distribution.csv` — predicted subtype counts among hämorrhagisch predictions (descriptive)
+- `hemorrhage_subtype_by_reference_status.csv` — predicted subtype × reference_status crosstab (descriptive)
+- `plots/` — confusion matrix, distributions, confidence by correctness, `predicted_haemorrhage_subtype_distribution.png`, `subtype_by_reference_status.png`
 
-**Methodology:** Preliminary evaluation on labeled subset only. Verify_Vaskulär-only cases are **excluded** from default performance metrics (conservative). Use `--include-verify-as-negative` for exploratory sensitivity analysis.
+**Methodology:** Preliminary evaluation on labeled subset only. Verify_Vaskulär-only cases are **excluded** from default performance metrics (conservative). Use `--include-verify-as-negative` for exploratory sensitivity analysis. **Subtype analysis is descriptive only** (no validated reference subtype labels yet); binary metrics are unaffected by subtype.
 
 Inspect:
 
@@ -100,6 +102,31 @@ python3 -m src.tasks.hemorrhage.run_case_pipeline [OPTIONS]
 | `--reports` / `--reference` | Override Excel paths |
 
 Prompt: `prompts/hemorrhage_case_classification.txt` (German, structured JSON).
+
+### Two-level classification (supervisor clarification)
+
+- **Level 1:** `hämorrhagisch` vs. `nicht_hämorrhagisch` (`klasse` 1 / 0).
+- **Level 2 (only if hämorrhagisch):** `haemorrhage_subtype` ∈ {`akut`, `historisch`, `nicht_akut`}.
+  - `nicht_hämorrhagisch` → `haemorrhage_subtype = null`.
+  - hämorrhagisch but subtype missing/unclear → `haemorrhage_subtype = "unbekannt"` + uncertainty flag (no parse failure).
+- **`Verify_Vaskulär` is metadata only**, never a class label. It must not influence the model decision and is excluded from binary TP/TN/FP/FN (unless `--include-verify-as-negative` sensitivity mode).
+- **Binary evaluation is unchanged** (hemorrhagic vs non_hemorrhagic). **Subtype analysis is descriptive only** — no validated reference subtype labels exist yet, so subtype accuracy is not computed.
+
+JSON schema returned by the LLM:
+
+```json
+{
+  "klasse": 0,
+  "label": "nicht_hämorrhagisch",
+  "haemorrhage_subtype": null,
+  "sicherheit": "niedrig",
+  "begruendung": "...",
+  "evidenz": [{"berichttyp": "...", "feld": "...", "textstelle": "...", "interpretation": "..."}],
+  "historische_blutung_erwaehnt": false,
+  "historische_blutung_als_aktuell_gewertet": false,
+  "unsicherheitsgruende": []
+}
+```
 
 **No keyword prefilter.** Incomplete cases are sent to LLM.
 

@@ -25,6 +25,52 @@ class EvaluationReportPaths:
     plots_dir: Path
 
 
+SUBTYPE_ORDER: List[str] = ["akut", "historisch", "nicht_akut", "unbekannt"]
+
+_SUBTYPE_NOTE = (
+    "Subtype analysis is descriptive only because no validated reference "
+    "subtype labels are currently available."
+)
+
+
+def _subtype_total(subtype_counts: Optional[Dict[str, int]]) -> int:
+    if not subtype_counts:
+        return 0
+    return sum(int(subtype_counts.get(k, 0)) for k in SUBTYPE_ORDER)
+
+
+def build_subtype_section_txt(subtype_counts: Optional[Dict[str, int]]) -> List[str]:
+    counts = subtype_counts or {}
+    total = _subtype_total(counts)
+    lines = [
+        "Hemorrhage subtype analysis",
+        "-" * 40,
+        f"Predicted haemorrhagisch cases by subtype (total {total}):",
+    ]
+    for key in SUBTYPE_ORDER:
+        lines.append(f"- {key}: {int(counts.get(key, 0))}")
+    lines.extend(["", _SUBTYPE_NOTE])
+    return lines
+
+
+def build_subtype_section_md(subtype_counts: Optional[Dict[str, int]]) -> List[str]:
+    counts = subtype_counts or {}
+    total = _subtype_total(counts)
+    lines = [
+        "## Hemorrhage subtype analysis",
+        "",
+        f"Predicted hämorrhagisch cases by subtype (total {total}):",
+        "",
+        "| Subtype | Count | Share of hämorrhagisch |",
+        "|---------|------:|-----------------------:|",
+    ]
+    for key in SUBTYPE_ORDER:
+        c = int(counts.get(key, 0))
+        lines.append(f"| {key} | {c} | {format_share(c, total)} |")
+    lines.extend(["", f"> {_SUBTYPE_NOTE}"])
+    return lines
+
+
 def _metric_int(metrics: Dict[str, Any], key: str) -> int:
     val = metrics.get(key)
     if val is None:
@@ -173,6 +219,7 @@ def build_readable_report_txt(
     paths: EvaluationReportPaths,
     *,
     include_verify_as_negative: bool = False,
+    subtype_counts: Optional[Dict[str, int]] = None,
 ) -> str:
     title = (
         "Hemorrhage Evaluation — Sensitivity Analysis (verify_only as non_hemorrhagic)"
@@ -255,6 +302,9 @@ def build_readable_report_txt(
     ):
         lines.append(f"* {bullet}")
 
+    lines.append("")
+    lines.extend(build_subtype_section_txt(subtype_counts))
+
     lines.extend(
         [
             "",
@@ -280,6 +330,7 @@ def build_readable_report_md(
     paths: EvaluationReportPaths,
     *,
     include_verify_as_negative: bool = False,
+    subtype_counts: Optional[Dict[str, int]] = None,
 ) -> str:
     title = (
         "Hemorrhage Evaluation — Sensitivity Analysis"
@@ -374,6 +425,9 @@ def build_readable_report_md(
     ):
         lines.append(f"- {bullet}")
 
+    lines.append("")
+    lines.extend(build_subtype_section_md(subtype_counts))
+
     lines.extend(
         [
             "",
@@ -398,12 +452,19 @@ def build_readable_reports(
     paths: EvaluationReportPaths,
     *,
     include_verify_as_negative: bool = False,
+    subtype_counts: Optional[Dict[str, int]] = None,
 ) -> Tuple[str, str]:
     """Return (txt_report, md_report)."""
     txt = build_readable_report_txt(
-        metrics, paths, include_verify_as_negative=include_verify_as_negative
+        metrics,
+        paths,
+        include_verify_as_negative=include_verify_as_negative,
+        subtype_counts=subtype_counts,
     )
     md = build_readable_report_md(
-        metrics, paths, include_verify_as_negative=include_verify_as_negative
+        metrics,
+        paths,
+        include_verify_as_negative=include_verify_as_negative,
+        subtype_counts=subtype_counts,
     )
     return txt, md

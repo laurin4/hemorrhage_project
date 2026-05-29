@@ -9,6 +9,28 @@
 
 ---
 
+## Two-level classification target (supervisor clarification)
+
+The target is no longer purely binary. The pipeline now produces a two-level label.
+
+- **Level 1 (always):** `klasse` 1/0 ↔ `label` `hämorrhagisch` / `nicht_hämorrhagisch`.
+- **Level 2 (only if hämorrhagisch):** `haemorrhage_subtype` ∈ {`akut`, `historisch`, `nicht_akut`}.
+  - `nicht_hämorrhagisch` → `haemorrhage_subtype = null`.
+  - hämorrhagisch with missing/unrecognized subtype → `haemorrhage_subtype = "unbekannt"` and an uncertainty reason is appended (parse does **not** fail).
+- **`Verify_Vaskulär` is metadata only** — never a class. It must not influence classification, and `verify_only` reference cases stay excluded from binary metrics (unless `--include-verify-as-negative`).
+
+Implementation touch points:
+
+- Prompt: `prompts/hemorrhage_case_classification.txt`, fallback in `inference/prompt.py`.
+- Parser/schema: `inference/parse.py` (`normalize_haemorrhage_subtype`, `_resolve_haemorrhage_subtype`, `VALID_HAEMORRHAGE_SUBTYPES`, `SUBTYPE_UNKNOWN`). Subtype normalization maps `acute→akut`, `history/historical→historisch`, `non_acute/chronisch/chronic/nicht-akut→nicht_akut`.
+- Prediction CSV: `haemorrhage_subtype` column (`inference/runner.py`).
+- Review exports: `predicted_haemorrhage_subtype` + `reference_haemorrhage_subtype` (empty placeholder) in prediction/confusion/FN/FP CSVs (`export/prediction_review.py`).
+- Reference: `io/reference_lookup.py` adds `reference_haemorrhage_subtype = ""` (no invented subtype).
+- Evaluation: `evaluation/runner.py` adds `compute_subtype_counts`, subtype distribution + subtype-by-reference CSVs, two subtype plots; binary metric computation is unchanged. Subtype accuracy is **not** computed (descriptive only).
+- Reports: `evaluation/report_format.py` adds a "Hemorrhage subtype analysis" section to the TXT and MD reports.
+
+---
+
 ## Phase 0 — Case-centric architecture (IMPLEMENTED)
 
 ### Methodological shift
