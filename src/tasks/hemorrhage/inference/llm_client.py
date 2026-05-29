@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import List, Tuple
+import time
+from typing import List, Optional, Tuple
 
 import requests
 
@@ -26,8 +27,44 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.1"))
 LLM_TOP_P = float(os.getenv("LLM_TOP_P", "0.9"))
 LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "1000"))
-TIMEOUT = int(os.getenv("LLM_TIMEOUT", os.getenv("OLLAMA_TIMEOUT", "120")))
 OLLAMA_NUM_CTX = int(os.getenv("OLLAMA_NUM_CTX", "8192"))
+
+
+def _int_env(name: str, default: int, *fallback_names: str) -> int:
+    """Read an int env var with fallbacks; ignore unparseable values."""
+    for key in (name, *fallback_names):
+        raw = os.getenv(key)
+        if raw is None or not str(raw).strip():
+            continue
+        try:
+            return int(float(str(raw).strip()))
+        except (TypeError, ValueError):
+            LOGGER.warning("Ignoring non-numeric %s=%r", key, raw)
+    return default
+
+
+# Read at call time so tests / runs can override env after import.
+def get_timeout_seconds() -> int:
+    return _int_env("HEMORRHAGE_LLM_TIMEOUT_SECONDS", 240, "LLM_TIMEOUT", "OLLAMA_TIMEOUT")
+
+
+def get_max_retries() -> int:
+    return max(0, _int_env("HEMORRHAGE_LLM_MAX_RETRIES", 1))
+
+
+# Backwards-compatible module attribute (timeout used by direct callers).
+TIMEOUT = get_timeout_seconds()
+
+RETRY_WAIT_SECONDS = 5
+RETRYABLE_EXCEPTIONS = (
+    requests.exceptions.ReadTimeout,
+    requests.exceptions.Timeout,
+    requests.exceptions.ConnectionError,
+)
+
+
+class LLMCallError(RuntimeError):
+    """Raised when an LLM call fails after exhausting retries."""
 
 
 def _extract_system_user(messages: list) -> Tuple[str, str]:
@@ -67,7 +104,7 @@ def call_usz_api(system_prompt: str, user_prompt: str) -> str:
         "max_tokens": LLM_MAX_TOKENS,
         "disable_think": os.getenv("LLM_DISABLE_THINK", "").strip().lower() in ("1", "true", "yes"),
     }
-    response = requests.post(USZ_LLM_URL, json=payload, timeout=TIMEOUT)
+    response = requests.post(USZ_LLM_URL, json=payload, timeout=get_timeout_seconds())
     if response.status_code != 200:
         snippet = (response.text or "")[:500]
         raise RuntimeError(f"USZ LLM API HTTP {response.status_code}: {snippet}")
@@ -95,7 +132,7 @@ def _call_ollama_messages(messages: list) -> str:
                 "num_ctx": OLLAMA_NUM_CTX,
             },
         },
-        timeout=TIMEOUT,
+        timeout=get_timeout_seconds(),
     )
     response.raise_for_status()
     payload = response.json()
@@ -106,8 +143,7 @@ def _call_ollama_messages(messages: list) -> str:
     return content.strip()
 
 
-def call_llm(messages: list) -> str:
-    """Provider-agnostic entry point for hemorrhage inference."""
+def _call_provider_once(messages: list) -> str:
     system_prompt, user_prompt = _extract_system_user(messages)
 
     if LLM_PROVIDER == "ollama":
@@ -117,3 +153,40 @@ def call_llm(messages: list) -> str:
         return call_usz_api(system_prompt, user_prompt)
 
     raise ValueError(f"Unknown LLM_PROVIDER={LLM_PROVIDER!r}; allowed: {SUPPORTED_PROVIDERS}")
+
+
+def call_llm(messages: list) -> str:
+    """
+    Provider-agnostic entry point with bounded retries.
+
+    Retries only on transient transport errors (ReadTimeout / Timeout /
+    ConnectionError), waiting ``RETRY_WAIT_SECONDS`` between attempts. After all
+    retries are exhausted it raises ``LLMCallError`` with a clear message so the
+    caller can mark the case ``llm_failed`` without crashing the pipeline.
+    """
+    timeout = get_timeout_seconds()
+    max_retries = get_max_retries()
+    total_attempts = max_retries + 1
+
+    last_exc: Optional[BaseException] = None
+    for attempt in range(1, total_attempts + 1):
+        try:
+            return _call_provider_once(messages)
+        except RETRYABLE_EXCEPTIONS as exc:
+            last_exc = exc
+            if attempt <= max_retries:
+                LOGGER.warning(
+                    "LLM transient failure (%s) attempt=%d/%d; retrying in %ds",
+                    type(exc).__name__,
+                    attempt,
+                    total_attempts,
+                    RETRY_WAIT_SECONDS,
+                )
+                time.sleep(RETRY_WAIT_SECONDS)
+                continue
+            break
+
+    err_name = type(last_exc).__name__ if last_exc is not None else "Timeout"
+    raise LLMCallError(
+        f"{err_name} after {timeout} seconds (retries={max_retries})"
+    ) from last_exc

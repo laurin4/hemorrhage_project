@@ -130,6 +130,18 @@ JSON schema returned by the LLM:
 
 **No keyword prefilter.** Incomplete cases are sent to LLM.
 
+### LLM robustness / stability
+
+The pipeline never crashes on a single slow/failed LLM call:
+
+- `HEMORRHAGE_LLM_TIMEOUT_SECONDS` — per-call read timeout (default **240**).
+- `HEMORRHAGE_LLM_MAX_RETRIES` — automatic retries (default **1**), only on `ReadTimeout` / `Timeout` / `ConnectionError`, with a 5 s wait between attempts.
+- On exhausted retries the case is recorded as `status=llm_failed` with `error_message="<ExcType> after <timeout> seconds (retries=N)"` and the run continues.
+- Predictions are written **incrementally** (header + flush per case), so completed rows survive an interrupted run.
+- Debug columns `prompt_length_chars` and `structured_case_text_length` help identify oversized cases that cause timeouts.
+- A per-case log line is emitted before each call: `[i/total] <case_id> text_length=… prompt_length=… reports=…`.
+- End-of-run summary prints `successful_cases` / `parse_failed_cases` / `llm_failed_cases`.
+
 Delirium pipeline: `src.pipeline.run_pipeline` — **not used** for hemorrhage.
 
 **Internal modules:** `src/tasks/hemorrhage/io/load_cases.py`, `reference_lookup.py`  

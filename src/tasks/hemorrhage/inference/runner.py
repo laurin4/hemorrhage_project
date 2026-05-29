@@ -57,6 +57,7 @@ PREDICTION_CSV_COLUMNS: List[str] = [
     "has_eintrittsbericht",
     "has_austrittsbericht",
     "structured_case_text_length",
+    "prompt_length_chars",
     "status",
     "klasse",
     "label",
@@ -110,6 +111,7 @@ def _base_row(case: ClinicalCase, ref_lookup: ReferenceLookup) -> Dict[str, Any]
         "has_eintrittsbericht": TYPUS_EINTRITTSBERICHT in case.reports,
         "has_austrittsbericht": TYPUS_AUSTRITTSBERICHT in case.reports,
         "structured_case_text_length": len(stext),
+        "prompt_length_chars": "",
         "status": "",
         "klasse": "",
         "label": "",
@@ -150,14 +152,42 @@ def _apply_prediction(row: Dict[str, Any], pred: Dict[str, Any]) -> None:
     row["unsicherheitsgruende_json"] = list_to_json(pred.get("unsicherheitsgruende") or [])
 
 
+def _prompt_length_chars(messages: Sequence[Dict[str, Any]]) -> int:
+    total = 0
+    for msg in messages or []:
+        if isinstance(msg, dict):
+            total += len(str(msg.get("content", "") or ""))
+    return total
+
+
 def process_single_case(
     case: ClinicalCase,
     ref_lookup: ReferenceLookup,
     *,
     dry_run: bool = False,
     llm_call: Optional[Callable[[list], str]] = None,
+    case_index: Optional[int] = None,
+    total_cases: Optional[int] = None,
 ) -> Dict[str, Any]:
     row = _base_row(case, ref_lookup)
+
+    messages = build_messages(case)
+    prompt_len = _prompt_length_chars(messages)
+    row["prompt_length_chars"] = prompt_len
+
+    idx_label = (
+        f"[{case_index}/{total_cases}] " if case_index and total_cases else ""
+    )
+    text_len = row["structured_case_text_length"]
+    reports = row.get("available_report_types", "")
+    LOGGER.info(
+        "%s%s text_length=%s prompt_length=%s reports=%s",
+        idx_label,
+        case.case_id,
+        text_len,
+        prompt_len,
+        reports,
+    )
 
     if dry_run:
         row["status"] = "dry_run"
@@ -170,12 +200,19 @@ def process_single_case(
             from src.tasks.hemorrhage.inference.llm_client import call_llm
 
             llm_call = call_llm
-        raw = llm_call(build_messages(case)) or ""
+        raw = llm_call(messages) or ""
         row["raw_llm_response"] = raw
     except Exception as exc:
         row["status"] = "llm_failed"
         row["error_message"] = f"{type(exc).__name__}: {exc}"
-        LOGGER.exception("LLM failed case_id=%s", case.case_id)
+        LOGGER.warning(
+            "%sLLM_FAILED case_id=%s text_length=%s prompt_length=%s error=%s",
+            idx_label,
+            case.case_id,
+            text_len,
+            prompt_len,
+            row["error_message"],
+        )
         return row
 
     parse_result = parse_hemorrhage_response(raw, context=f"hemorrhage_case:{case.case_id}")
@@ -291,6 +328,16 @@ def run_hemorrhage_case_pipeline(
     if limit is not None and limit > 0:
         work = work[:limit]
 
+    timeout_seconds = max_retries = None
+    if not dry_run:
+        from src.tasks.hemorrhage.inference.llm_client import (
+            get_max_retries,
+            get_timeout_seconds,
+        )
+
+        timeout_seconds = get_timeout_seconds()
+        max_retries = get_max_retries()
+
     print("Hemorrhage case pipeline — startup")
     print(f"  reports_path={reports_file}")
     print(f"  reference_path={ref_resolved_path} ({ref_status})")
@@ -298,25 +345,43 @@ def run_hemorrhage_case_pipeline(
     print(f"  cases_to_process={len(work)}")
     print(f"  output_path={out_path}")
     print(f"  dry_run={dry_run}")
+    if not dry_run:
+        print(f"  llm_timeout_seconds={timeout_seconds}")
+        print(f"  llm_max_retries={max_retries}")
 
     total = len(work)
     rows: List[Dict[str, Any]] = []
 
-    for idx, case in enumerate(work, start=1):
-        print(f"Processing case {idx}/{total} | case_id={case.case_id} | dry_run={dry_run}")
-        row = process_single_case(case, ref_lookup, dry_run=dry_run, llm_call=llm_call)
-        rows.append(row)
-        status = row.get("status", "")
-        if status == "success":
-            result.success_count += 1
-        elif status == "dry_run":
-            result.dry_run_count += 1
-        elif status == "llm_failed":
-            result.llm_failed_count += 1
-        elif status == "parse_failed":
-            result.parse_failed_count += 1
+    # Incremental write: header first, then append + flush per case so completed
+    # predictions are preserved even if the run is interrupted.
+    with open(out_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=PREDICTION_CSV_COLUMNS, extrasaction="ignore")
+        writer.writeheader()
+        f.flush()
 
-    write_predictions_csv(rows, out_path)
+        for idx, case in enumerate(work, start=1):
+            row = process_single_case(
+                case,
+                ref_lookup,
+                dry_run=dry_run,
+                llm_call=llm_call,
+                case_index=idx,
+                total_cases=total,
+            )
+            writer.writerow(row)
+            f.flush()
+            rows.append(row)
+
+            status = row.get("status", "")
+            if status == "success":
+                result.success_count += 1
+            elif status == "dry_run":
+                result.dry_run_count += 1
+            elif status == "llm_failed":
+                result.llm_failed_count += 1
+            elif status == "parse_failed":
+                result.parse_failed_count += 1
+
     write_parse_failures_csv(rows, HEMORRHAGE_PARSE_FAILURES_PATH)
     result.cases_processed = len(rows)
 
@@ -326,9 +391,11 @@ def run_hemorrhage_case_pipeline(
         f"cases_total_loaded={len(cases)}",
         f"cases_processed={result.cases_processed}",
         f"dry_run={dry_run}",
-        f"success={result.success_count}",
-        f"parse_failed={result.parse_failed_count}",
-        f"llm_failed={result.llm_failed_count}",
+        "--- run summary ---",
+        f"successful_cases={result.success_count}",
+        f"parse_failed_cases={result.parse_failed_count}",
+        f"llm_failed_cases={result.llm_failed_count}",
+        "-------------------",
         f"dry_run_rows={result.dry_run_count}",
         f"output={out_path}",
         f"parse_failures_debug={HEMORRHAGE_PARSE_FAILURES_PATH}",
