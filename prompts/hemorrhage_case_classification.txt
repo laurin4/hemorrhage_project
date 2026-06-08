@@ -6,122 +6,102 @@ Es fehlen möglicherweise ein oder mehrere Berichtstypen — beurteile trotzdem 
 
 ZWEISTUFIGE KLASSIFIKATION:
 STUFE 1 — immer:
-- hämorrhagisch ODER nicht_hämorrhagisch
+- klasse=0 → nicht_hämorrhagisch
+- klasse=1 → hämorrhagisch
 
-STUFE 2 — nur wenn hämorrhagisch:
-- Subtyp: akut, historisch ODER nicht_akut
+STUFE 2 — nur wenn klasse=1 / hämorrhagisch:
+- Subtyp: historisch, nicht_akut ODER akut
 
 VERIFY_VASKULÄR:
 Verify_Vaskulär ist KEINE Klassifikationsklasse. Es ist nur Metadaten/Referenzinformation.
 Verify_Vaskulär darf die Klassifikation NICHT beeinflussen.
 
-VORLÄUFIGE ARBEITSDEFINITION (bis zur Supervisor-Rückmeldung):
+ZENTRALE KONZEPTUELLE REGEL:
+Eine historische Blutung ist weiterhin eine Blutung.
+Wenn eine Blutung historisch ist:
+- klasse = 1
+- label = «hämorrhagisch»
+- haemorrhage_subtype = «historisch»
+Klassifiziere eine historische Blutung NIEMALS als klasse=0.
 
-Hämorrhagisch =
-klinischer Fall mit aktueller oder klinisch relevanter Blutungsmanifestation im Kontext des aktuellen behandelten Falls/Eingriffs.
+GRUNDDEFINITION:
+Hämorrhagisch (klasse=1) = es gibt eine klinisch relevante hämorrhagische Evidenz (aktuell ODER in der Vorgeschichte).
+Nicht hämorrhagisch (klasse=0) = es gibt keinerlei klinisch relevante hämorrhagische Evidenz im Fall.
 
-Nicht hämorrhagisch =
-keine aktuelle oder klinisch relevante Blutungsmanifestation im aktuellen Fallkontext.
+ENTSCHEIDUNGSLOGIK:
 
-WICHTIGE INTERPRETATIONSREGELN:
-- Historische Blutungen allein zählen NICHT automatisch als hämorrhagisch, wenn sie nicht zum aktuellen Fall/Eingriff gehören.
-- Differenzialdiagnosen allein rechtfertigen KEINE hämorrhagische Klassifikation.
-- Unterscheide alte Blutungshistorie von aktueller Fallrelevanz.
-- Begriffe wie «Blutung», «Einblutung», «hämorrhagisch» müssen im Kontext interpretiert werden — nicht allein aus Stichworten ableiten.
-- Bei Unsicherheit: niedrigere Sicherheit wählen und Unsicherheitsgründe angeben.
+Schritt 1 — Gibt es überhaupt eine klinisch relevante hämorrhagische Evidenz (aktuell oder historisch)?
+- Nein → klasse=0, label=«nicht_hämorrhagisch», haemorrhage_subtype=null
+- Ja → klasse=1, label=«hämorrhagisch», haemorrhage_subtype ∈ {historisch, nicht_akut, akut}
 
-PRÄOPERATIVE BLUTUNG — AKTUELL FALLRELEVANT (WICHTIG):
-Eine Blutung VOR der Operation kann trotzdem hämorrhagisch sein, wenn sie zum aktuellen Fall gehört.
+Schritt 2 — Wenn die Blutung historisch/vergangen ist:
+- haemorrhage_subtype = «historisch»
 
-Klassifiziere als hämorrhagisch (klasse=1), wenn die Blutung:
-- Teil der aktuellen Präsentation war
-- Indikation/Grund für die aktuelle Aufnahme oder Operation war
-- durch die Operation behandelt wird (z.B. Hämatomevakuation, Extirpation/Evakuation von Blut/Hämatom)
-- klar als akut/subakut klinisch relevant beschrieben ist (nicht nur beschreibend)
+Schritt 3 — Wenn die Blutung für den aktuellen Fall relevant ist:
+- «akut», wenn akutes/frisches/aktuelles Blutungsereignis
+- «nicht_akut», wenn aktuell fallrelevant, aber nicht akut
 
-Klassifiziere NICHT automatisch als «nur historisch/nicht hämorrhagisch», allein weil die Blutung zeitlich vor dem OP-Eingriff stattfand.
+SUBTYP-DEFINITIONEN (STUFE 2 — nur bei klasse=1):
 
-KAVERNOM / EINBLUTUNG — NICHT AUTOMATISCH HÄMORRHAGISCH (WICHTIG, vorläufig bis Supervisor-Rückmeldung):
-Eine Blutung oder Einblutung in einem Kavernom darf NICHT automatisch als hämorrhagischer Fall gewertet werden.
+1. historisch
+Ein früheres Blutungsereignis in der Vorgeschichte der Patientin/des Patienten.
+Verwende «historisch», wenn die Blutung klar beschrieben ist als:
+- früher / vergangen / alt / zurückliegend
+- «Status nach Blutung»
+- frühere Blutung vor Jahren
+- historische Blutung in Diagnose/Anamnese erwähnt
+- kein aktuelles akutes Blutungsereignis beschrieben
+WICHTIG: Auch wenn die Blutung damals akut war — wenn sie zur Vergangenheit/Vorgeschichte gehört, ist subtype=«historisch».
 
-Klassifiziere als hämorrhagisch (klasse=1) nur, wenn der Text klar anzeigt:
-- klinisch relevante akute/subakute Blutung
-- Blutung/Hämatom als Hauptgrund für die aktuelle Behandlung/Operation
-- Hämatomevakuation oder operative Behandlung eines akuten Hämatoms
-- Masseneffekt oder symptomatisches Blutungsereignis
-- aktuell relevanter intrakranieller Hämorrhagiekontext
+2. akut
+Akute Blutung im aktuellen Fall.
+Verwende «akut», wenn der Text anzeigt:
+- akute Blutung
+- frische Blutung / frisches Hämatom
+- akutes Hämatom
+- akutes/subakutes hämorrhagisches Ereignis
+- dringende/aktuelle Blutungsmanifestation
+- akute Blutung als Grund für die aktuelle Behandlung
 
-Klassifiziere als nicht hämorrhagisch (klasse=0), wenn:
-- «geblutetes Kavernom» nur beschreibend erwähnt wird (ohne akute Fallrelevanz)
-- Kavernomblutung chronisch/alt/zufällig beschrieben ist
-- kein aktuell klinisch relevantes hämorrhagisches Ereignis beschrieben ist
-- die Operation als elektive Resektion ohne akute Hämorrhagierelevanz erscheint
+3. nicht_akut
+Aktuell fallrelevanter hämorrhagischer Befund, aber nicht akut.
+Verwende «nicht_akut», wenn die Blutung aktuell fallrelevant, aber nicht akut ist, z.B.:
+- chronische hämorrhagische Läsion
+- nicht-akute Blutungsmanifestation
+- alter, aber weiterhin aktuell fallrelevanter hämorrhagischer Anteil
+- hämorrhagischer Kontext, relevant für die aktuelle Operation, aber nicht als akut beschrieben
 
-Bei Kavernomblutung mit unklarer Relevanz:
-- bevorzuge klasse=0, sicherheit «mittel» oder «niedrig»
-- Unsicherheit in unsicherheitsgruende angeben
-
-NUR ECHTE FERNHISTORIE — NICHT AKTUELL FALLRELEVANT:
-Behandle Blutung nur als nicht aktuell fallrelevant (klasse=0), wenn klar erkennbar:
-- sie in einer fernen vergangenen Episode stattfand (z.B. «Blutung 1998» nur als Vorgeschichte)
-- sie nur als Vorgeschichte/Anamnese ohne Bezug zur aktuellen Behandlung erwähnt wird
-- sie nicht Indikation oder Grund für die aktuelle Aufnahme/Operation ist
-- die aktuelle Behandlung nicht die Folgen dieser Blutung betrifft
+WEITERE INTERPRETATIONSREGELN:
+- Klassifiziere NICHT als nicht_hämorrhagisch, nur weil die Blutung nicht akut oder nicht aktuell ist.
+- Eine reine Differenzialdiagnose ohne hämorrhagische Evidenz rechtfertigt KEINE hämorrhagische Klassifikation.
+- Begriffe wie «Blutung», «Einblutung», «hämorrhagisch» im Kontext interpretieren — nicht allein aus Stichworten ableiten.
+- «geblutetes Kavernom» / «eingeblutetes Kavernom» beschreibt ein Blutungsereignis → klasse=1; Subtyp je nach Zeitbezug (akut, nicht_akut oder historisch).
+- Ein Kavernom OHNE jegliche beschriebene Einblutung/Blutung ist nicht_hämorrhagisch (klasse=0, subtype=null).
+- Bei Unsicherheit: niedrigere Sicherheit wählen und Unsicherheitsgründe angeben (nicht die Klasse «verstecken»).
 
 BEISPIELE (Orientierung, keine starren Regeln):
 
-→ hämorrhagisch (klasse=1):
-- «akute Einblutung» / «symptomatische Blutung» mit Hämatomevakuation oder akuter OP-Indikation
-- «geblutetes Kavernom» + «Hämatomevakuation» / klare akute Fallrelevanz (nicht nur beschreibend)
-- Blutung/Hämatom war klarer Hauptgrund für die aktuelle Operation, auch wenn präoperativ
+→ hämorrhagisch + akut:
+- «akute Einblutung» / «frisches Hämatom» / «symptomatische Blutung» mit aktueller OP-Indikation
+- Hämatomevakuation eines akuten Hämatoms im aktuellen Fall
 
-→ nicht hämorrhagisch (klasse=0):
-- «geblutetes Kavernom» nur beschreibend, ohne akute/subakute Relevanz oder Hämatomevakuation
-- «chronisch eingeblutetes Kavernom» ohne akute Hämorrhagierelevanz
-- «Blutung 1998» nur als ferne Vorgeschichte, ohne Bezug zur aktuellen Behandlung
-- «Status nach Blutung vor vielen Jahren» ohne dass die aktuelle OP/Behandlung damit zusammenhängt
-- elektive Kavernom-Resektion ohne beschriebenes akutes hämorrhagisches Ereignis
+→ hämorrhagisch + nicht_akut:
+- «chronisch eingeblutetes Kavernom», aktuell fallrelevant, aber nicht akut
+- hämorrhagische Läsion, relevant für die aktuelle Operation, ohne akutes Ereignis
 
-JSON-FELDER BEI PRÄOPERATIVER FALLRELEVANTER BLUTUNG:
-- historische_blutung_erwaehnt = true (Blutung liegt zeitlich vor oder in der Anamnese)
-- historische_blutung_als_aktuell_gewertet = true (Blutung ist für den aktuellen Fall klinisch relevant)
+→ hämorrhagisch + historisch:
+- «Status nach Blutung 1998» / «frühere Blutung vor Jahren»
+- «geblutetes Kavernom» nur als Vorgeschichte, ohne aktuelles akutes Ereignis
+- historische Blutung in Diagnose/Anamnese, ohne aktuelle akute Blutung
 
-JSON-FELDER BEI NUR FERNHISTORISCHER BLUTUNG:
-- historische_blutung_erwaehnt = true
-- historische_blutung_als_aktuell_gewertet = false
-- klasse = 1, label = «hämorrhagisch», haemorrhage_subtype = «historisch»
-  (NUR wenn überhaupt eine hämorrhagische Manifestation vorliegt; sonst klasse=0)
+→ nicht_hämorrhagisch (klasse=0, subtype=null):
+- keinerlei hämorrhagische Evidenz im Fall
+- Kavernom ohne beschriebene Einblutung/Blutung
+- reine Differenzialdiagnose ohne hämorrhagischen Befund
 
-SUBTYP-DEFINITIONEN (STUFE 2 — nur bei label=hämorrhagisch):
-
-akut:
-- aktuelle akute Blutung
-- akutes Blutungsereignis im Zusammenhang mit aktueller Aufnahme/Behandlung
-- akute/subakute klinisch relevante Blutung
-- akutes Hämatom / Hämatomevakuation im aktuellen Kontext
-
-historisch:
-- Blutung nur in der ferneren Vorgeschichte
-- frühere Blutungsepisode ohne direkten Bezug zur aktuellen Behandlung
-- Status nach Blutung (alt)
-- historische Erwähnung ohne aktuelle Behandlungsrelevanz
-
-nicht_akut:
-- hämorrhagische Läsion/Blutungsmanifestation vorhanden, aber nicht akut
-- chronische oder alte, aber weiterhin läsionsbezogene Blutung
-- nicht reine Fernhistorie
-- klinisch relevanter hämorrhagischer Kontext, aber nicht akut
-
-WICHTIG ZUR ZWEISTUFIGEN LOGIK:
-- Klassifiziere NICHT als nicht_hämorrhagisch, nur weil die Blutung nicht akut ist.
-- Wenn hämorrhagisch, aber chronisch/nicht akut → label=hämorrhagisch + haemorrhage_subtype=nicht_akut.
-- Wenn Blutung nur ferne Vorgeschichte und ohne Bezug zum aktuellen Fall → entweder label=hämorrhagisch + subtype=historisch (wenn eine hämorrhagische Manifestation vorliegt) ODER label=nicht_hämorrhagisch (wenn keine relevante hämorrhagische Evidenz im aktuellen Fallkontext). Sei explizit in der begruendung.
-- nicht_hämorrhagisch: keine klinisch relevante hämorrhagische Evidenz im aktuellen Fallkontext.
-- Verify_Vaskulär darf die Entscheidung nie beeinflussen.
-
-SUBTYP-REGELN FÜR JSON:
-- label = nicht_hämorrhagisch → haemorrhage_subtype = null
-- label = hämorrhagisch → haemorrhage_subtype ∈ {«akut», «historisch», «nicht_akut»}
+JSON-FELDER ZUR HISTORISCHEN BLUTUNG:
+- historische_blutung_erwaehnt = true, wenn eine Blutung in der Vorgeschichte/Anamnese erwähnt wird
+- historische_blutung_als_aktuell_gewertet = true, wenn die (historische) Blutung als aktuell fallrelevant gewertet wird; sonst false
 
 AUSGABE:
 Gib GENAU ein JSON-Objekt zurück (kein Markdown, kein Fliesstext ausserhalb des JSON).
@@ -131,7 +111,7 @@ Schema:
 {
   "klasse": 0 oder 1,
   "label": "nicht_hämorrhagisch" oder "hämorrhagisch",
-  "haemorrhage_subtype": "akut" oder "historisch" oder "nicht_akut" oder null,
+  "haemorrhage_subtype": "historisch" oder "nicht_akut" oder "akut" oder null,
   "sicherheit": "niedrig" oder "mittel" oder "hoch",
   "begruendung": "kurze klinische Begründung",
   "evidenz": [
@@ -139,7 +119,7 @@ Schema:
       "berichttyp": "z.B. 01 Operationsbericht",
       "feld": "z.B. diag",
       "textstelle": "wörtliche oder paraphrasierte Stelle",
-      "interpretation": "warum relevant für aktuelle vs. historische Blutung"
+      "interpretation": "warum relevant; akut vs. nicht_akut vs. historisch"
     }
   ],
   "historische_blutung_erwaehnt": true oder false,
@@ -148,5 +128,6 @@ Schema:
 }
 
 Mapping:
-- klasse=1 ↔ label="hämorrhagisch" → haemorrhage_subtype ∈ {akut, historisch, nicht_akut}
+- klasse=1 ↔ label="hämorrhagisch" → haemorrhage_subtype ∈ {historisch, nicht_akut, akut} (PFLICHT)
 - klasse=0 ↔ label="nicht_hämorrhagisch" → haemorrhage_subtype = null
+- Gib NICHT «unbekannt» als Subtyp aus; verwende sicherheit/unsicherheitsgruende für Unsicherheit.

@@ -12,10 +12,11 @@
 
 Classify clinical **cases** from OP / Eintritts / Austritts reports using structured evidence + local LLM (later phases) with a **two-level target** (supervisor clarification):
 
-- **Level 1:** `hämorrhagisch` vs. `nicht_hämorrhagisch`.
-- **Level 2 (only if hämorrhagisch):** `haemorrhage_subtype` ∈ {`akut`, `historisch`, `nicht_akut`}; `null` for non-hemorrhagic; `"unbekannt"` if hemorrhagic but subtype unclear.
+- **Level 1:** `klasse=0 → nicht_hämorrhagisch`, `klasse=1 → hämorrhagisch`.
+- **Level 2 (only if `klasse=1`):** `haemorrhage_subtype` ∈ {`akut`, `nicht_akut`, `historisch`}; `null` for non-hemorrhagic; parser fallback `"unbekannt"` if hemorrhagic but subtype unclear.
+- **Historical hemorrhage is still hemorrhage:** past/remote bleed → `klasse=1` + `subtype="historisch"` (NEVER `klasse=0`).
 - **`Verify_Vaskulär` is metadata/reference only**, NOT a ground-truth class, and is excluded from binary TP/TN/FP/FN by default.
-- **Binary evaluation is unchanged**; **subtype analysis is descriptive only** (no validated reference subtype labels yet).
+- **Binary evaluation is unchanged** (historical counts as positive); **subtype analysis is descriptive only** (no validated reference subtype labels yet).
 
 ### Case definition
 

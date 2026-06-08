@@ -13,10 +13,11 @@
 
 The target is no longer purely binary. The pipeline now produces a two-level label.
 
-- **Level 1 (always):** `klasse` 1/0 ↔ `label` `hämorrhagisch` / `nicht_hämorrhagisch`.
-- **Level 2 (only if hämorrhagisch):** `haemorrhage_subtype` ∈ {`akut`, `historisch`, `nicht_akut`}.
+- **Level 1 (always):** `klasse=0 → nicht_hämorrhagisch`, `klasse=1 → hämorrhagisch`.
+- **Level 2 (only if `klasse=1`):** `haemorrhage_subtype` ∈ {`akut`, `nicht_akut`, `historisch`} (mandatory when hemorrhagic).
   - `nicht_hämorrhagisch` → `haemorrhage_subtype = null`.
-  - hämorrhagisch with missing/unrecognized subtype → `haemorrhage_subtype = "unbekannt"` and an uncertainty reason is appended (parse does **not** fail).
+  - hämorrhagisch with missing/unrecognized subtype → parser sets `haemorrhage_subtype = "unbekannt"` and appends an uncertainty reason (parse does **not** fail). The model is instructed not to emit `unbekannt`.
+- **Historical hemorrhage is still hemorrhage:** a past/remote bleed is `klasse=1` + `subtype="historisch"`, NEVER `klasse=0`. (`akut` = current acute event; `nicht_akut` = current non-acute finding; `historisch` = past/old, even if acute at the time.)
 - **`Verify_Vaskulär` is metadata only** — never a class. It must not influence classification, and `verify_only` reference cases stay excluded from binary metrics (unless `--include-verify-as-negative`).
 
 Implementation touch points:

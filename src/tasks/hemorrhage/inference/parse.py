@@ -329,8 +329,12 @@ def normalize_haemorrhage_subtype(value: object) -> Optional[str]:
     if key.startswith("nicht_akut") or "non_acut" in key or "chronisch" in key or "chronic" in key:
         return "nicht_akut"
 
-    # historisch variants: history, historical, historisch, anamnestisch
-    if key.startswith("historisch") or key.startswith("historic") or key in ("history", "historical", "anamnestisch"):
+    # historisch variants: history, historical, historisch, alt, früher (frueher), remote, anamnestisch
+    if (
+        key.startswith("historisch")
+        or key.startswith("historic")
+        or key in ("history", "historical", "anamnestisch", "alt", "frueher", "remote", "past", "old", "vergangen")
+    ):
         return "historisch"
 
     # akut variants: akut, acute, akut_subakut, subakut

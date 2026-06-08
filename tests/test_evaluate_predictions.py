@@ -268,6 +268,34 @@ def test_subtype_missing_counts_as_unbekannt():
     assert counts["akut"] == 0
 
 
+def test_historical_subtype_counts_as_binary_positive():
+    """klasse=1 + subtype historisch against a hemorrhagic reference is a TP."""
+    df = pd.DataFrame(
+        [
+            {
+                "case_id": "h1",
+                "excel_pid": "1",
+                "excel_opdat": "d1",
+                "reference_status": "hemorrhagic",
+                "status": "success",
+                "klasse": 1,
+                "label": "hämorrhagisch",
+                "predicted_haemorrhage_subtype": "historisch",
+                "prediction_vs_reference": "TP",
+                "error_type": "correct_positive",
+                "sicherheit": "mittel",
+                "begruendung": "Status nach Blutung.",
+                "evidence_summary": "",
+            }
+        ]
+    )
+    counts = compute_counts(df, include_verify_as_negative=False)
+    assert counts["TP"] == 1
+    assert counts["FN"] == 0
+    subtype = compute_subtype_counts(df)
+    assert subtype["historisch"] == 1
+
+
 def test_subtype_does_not_affect_binary_metrics():
     base = compute_counts(_sample_review_rows(), include_verify_as_negative=False)
     with_subtype = compute_counts(_subtype_review_rows(), include_verify_as_negative=False)

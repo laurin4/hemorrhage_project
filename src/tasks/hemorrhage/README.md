@@ -105,12 +105,16 @@ Prompt: `prompts/hemorrhage_case_classification.txt` (German, structured JSON).
 
 ### Two-level classification (supervisor clarification)
 
-- **Level 1:** `hämorrhagisch` vs. `nicht_hämorrhagisch` (`klasse` 1 / 0).
-- **Level 2 (only if hämorrhagisch):** `haemorrhage_subtype` ∈ {`akut`, `historisch`, `nicht_akut`}.
+- **Level 1:** `klasse=0 → nicht_hämorrhagisch`, `klasse=1 → hämorrhagisch`.
+- **Level 2 (only if `klasse=1`):** `haemorrhage_subtype` ∈ {`akut`, `nicht_akut`, `historisch`} (mandatory when hemorrhagic).
   - `nicht_hämorrhagisch` → `haemorrhage_subtype = null`.
-  - hämorrhagisch but subtype missing/unclear → `haemorrhage_subtype = "unbekannt"` + uncertainty flag (no parse failure).
+  - hämorrhagisch but subtype missing/unclear → parser fallback `haemorrhage_subtype = "unbekannt"` + uncertainty reason (no parse failure). The model itself must not emit `unbekannt`.
+- **Historical hemorrhage is still hemorrhage.** A past/remote bleed → `klasse=1`, `label="hämorrhagisch"`, `subtype="historisch"` (NEVER `klasse=0`).
+  - `akut` = current acute/fresh bleeding event.
+  - `nicht_akut` = current-case hemorrhagic finding that is not acute (e.g. chronic lesion).
+  - `historisch` = previous/past/old hemorrhage in history (incl. "Status nach Blutung"); even if it was acute at the time.
 - **`Verify_Vaskulär` is metadata only**, never a class label. It must not influence the model decision and is excluded from binary TP/TN/FP/FN (unless `--include-verify-as-negative` sensitivity mode).
-- **Binary evaluation is unchanged** (hemorrhagic vs non_hemorrhagic). **Subtype analysis is descriptive only** — no validated reference subtype labels exist yet, so subtype accuracy is not computed.
+- **Binary evaluation is unchanged** (hemorrhagic vs non_hemorrhagic; historical counts as positive). **Subtype analysis is descriptive only** — no validated reference subtype labels exist yet, so subtype accuracy is not computed.
 
 JSON schema returned by the LLM:
 

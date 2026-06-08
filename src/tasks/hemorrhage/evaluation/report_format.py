@@ -25,11 +25,12 @@ class EvaluationReportPaths:
     plots_dir: Path
 
 
-SUBTYPE_ORDER: List[str] = ["akut", "historisch", "nicht_akut", "unbekannt"]
+SUBTYPE_ORDER: List[str] = ["akut", "nicht_akut", "historisch", "unbekannt"]
 
 _SUBTYPE_NOTE = (
-    "Subtype analysis is descriptive only because no validated reference "
-    "subtype labels are currently available."
+    "Subtype analysis is descriptive only. Historical hemorrhage is treated as "
+    "hämorrhagisch for binary evaluation. (No validated reference subtype labels "
+    "are currently available, so subtype accuracy is not computed.)"
 )
 
 

@@ -76,19 +76,20 @@ def prompt_preview(case: ClinicalCase, max_chars: int = PROMPT_PREVIEW_MAX_CHARS
 
 
 _FALLBACK_SYSTEM_PROMPT = """Du bist ein klinisches Entscheidungssystem für zweistufige Fallklassifikation.
-STUFE 1: hämorrhagisch vs. nicht_hämorrhagisch.
-STUFE 2 (nur wenn hämorrhagisch): haemorrhage_subtype ∈ {akut, historisch, nicht_akut}.
-Klassifiziere NICHT als nicht_hämorrhagisch, nur weil die Blutung nicht akut ist — dann label=hämorrhagisch + subtype=nicht_akut.
+STUFE 1: klasse=0 nicht_hämorrhagisch vs. klasse=1 hämorrhagisch.
+STUFE 2 (nur wenn klasse=1): haemorrhage_subtype ∈ {historisch, nicht_akut, akut} (PFLICHT).
+Eine historische Blutung ist weiterhin eine Blutung: klasse=1, label=hämorrhagisch, subtype=historisch. NIEMALS klasse=0.
+Klassifiziere NICHT als nicht_hämorrhagisch, nur weil die Blutung nicht akut oder nicht aktuell ist.
 Verify_Vaskulär ist KEINE Klasse, nur Metadaten, und darf die Klassifikation nicht beeinflussen.
-Bei label=nicht_hämorrhagisch ist haemorrhage_subtype=null.
+Bei klasse=0 ist haemorrhage_subtype=null. Gib NICHT «unbekannt» als Subtyp aus.
 Antworte ausschliesslich mit einem JSON-Objekt auf Deutsch (Feldinhalte), ohne Markdown.
 """
 
 _USER_PROMPT_REMINDER = """Erinnerung:
-- Zweistufig: erst hämorrhagisch vs. nicht_hämorrhagisch; wenn hämorrhagisch, dann Subtyp akut/historisch/nicht_akut.
-- Präoperative Blutung mit klarer akuter Fallrelevanz (z.B. Hämatomevakuation, akute symptomatische Blutung) ist hämorrhagisch + subtype=akut.
-- «geblutetes Kavernom» allein ist NICHT automatisch hämorrhagisch; chronisch/beschreibend ohne akute Relevanz → nicht hämorrhagisch.
-- Chronisch/nicht-akut, aber hämorrhagische Läsion vorhanden → hämorrhagisch + subtype=nicht_akut (NICHT nicht_hämorrhagisch).
-- Nur ferne Vorgeschichte ohne aktuellen Bezug → hämorrhagisch + subtype=historisch, oder nicht_hämorrhagisch wenn keine relevante hämorrhagische Evidenz.
+- Zweistufig: erst klasse 0/1 (nicht_hämorrhagisch vs. hämorrhagisch); wenn klasse=1, dann Subtyp historisch/nicht_akut/akut (PFLICHT).
+- Eine historische Blutung ist weiterhin eine Blutung → klasse=1, label=hämorrhagisch, subtype=historisch (NIEMALS klasse=0).
+- Akute/frische/aktuelle Blutung → subtype=akut.
+- Aktuell fallrelevante, aber nicht akute hämorrhagische Läsion → subtype=nicht_akut (NICHT nicht_hämorrhagisch).
+- «geblutetes/eingeblutetes Kavernom» beschreibt ein Blutungsereignis → klasse=1; Subtyp je nach Zeitbezug. Kavernom OHNE Einblutung → nicht_hämorrhagisch.
 - Verify_Vaskulär darf die Klassifikation nicht beeinflussen.
-- nicht_hämorrhagisch → haemorrhage_subtype=null."""
+- nicht_hämorrhagisch (klasse=0) nur ohne jegliche hämorrhagische Evidenz → haemorrhage_subtype=null."""

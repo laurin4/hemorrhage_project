@@ -1,4 +1,9 @@
-"""Tests for hemorrhage prompt rules on preoperative vs remote historical bleeding."""
+"""Tests for the two-level hemorrhage prompt rules and example response parsing.
+
+Conceptual rule (current): historical hemorrhage is still hemorrhage, i.e.
+klasse=1 / hämorrhagisch + haemorrhage_subtype="historisch". Historical bleeding
+must NOT be classified as klasse=0.
+"""
 
 import json
 
@@ -32,11 +37,23 @@ def _case_with_op_text(text: str):
     )
 
 
-def test_system_prompt_contains_preoperative_bleeding_rule():
-    prompt = load_system_prompt()
-    assert "PRÄOPERATIVE BLUTUNG" in prompt
-    assert "Hämatomevakuation" in prompt
-    assert "Blutung 1998" in prompt
+def _response(**overrides):
+    base = {
+        "klasse": 1,
+        "label": "hämorrhagisch",
+        "haemorrhage_subtype": "akut",
+        "sicherheit": "hoch",
+        "begruendung": "...",
+        "evidenz": [],
+        "historische_blutung_erwaehnt": False,
+        "historische_blutung_als_aktuell_gewertet": False,
+        "unsicherheitsgruende": [],
+    }
+    base.update(overrides)
+    return json.dumps(base, ensure_ascii=False)
+
+
+# --- Prompt content -------------------------------------------------------
 
 
 def test_system_prompt_requests_two_level_classification():
@@ -48,6 +65,17 @@ def test_system_prompt_requests_two_level_classification():
         assert subtype in prompt
 
 
+def test_system_prompt_states_historical_is_hemorrhagic():
+    prompt = load_system_prompt()
+    lowered = prompt.lower()
+    # New rule: historical hemorrhage is still hemorrhage (klasse=1 + historisch).
+    assert "historische blutung ist weiterhin eine blutung" in lowered
+    assert "niemals" in lowered
+    # Old contradictory rule must be gone.
+    assert "ferne Vorgeschichte" not in prompt
+    assert "PRÄOPERATIVE BLUTUNG" not in prompt
+
+
 def test_system_prompt_states_verify_vaskulaer_is_metadata():
     prompt = load_system_prompt()
     assert "Verify_Vaskulär" in prompt
@@ -56,175 +84,81 @@ def test_system_prompt_states_verify_vaskulaer_is_metadata():
     assert "nicht beeinflussen" in lowered
 
 
-def test_system_prompt_contains_cavernoma_bleeding_rule():
-    prompt = load_system_prompt()
-    assert "KAVERNOM" in prompt
-    assert (
-        "Eine Blutung oder Einblutung in einem Kavernom darf NICHT automatisch"
-        in prompt
-    )
-    assert "chronisch eingeblutetes Kavernom" in prompt
-    assert "geblutetes Kavernom" in prompt
-
-
-def test_preoperative_kavernom_prompt_includes_case_and_reminder():
-    case = _case_with_op_text(
-        "[Diagnosen]\ngeblutetes Kavernom\n\n[Vorgehen/Beurteilung]\nHämatomevakuation durchgeführt"
-    )
+def test_user_prompt_reminder_mentions_historical_positive():
+    case = _case_with_op_text("[Diagnosen]\nStatus nach Blutung 1998")
     user = build_user_prompt(case)
-    system = load_system_prompt()
-    assert "geblutetes Kavernom" in user
-    assert "Hämatomevakuation" in user
-    assert "Präoperative Blutung" in user
-    assert "NICHT automatisch hämorrhagisch" in user
-    assert "KAVERNOM" in system
-
-
-def test_remote_history_prompt_includes_distinction():
-    case = _case_with_op_text(
-        "[Diagnosen]\nCCM\n\n[Indikation/Untersuch]\nBlutung 1998 in der Vorgeschichte, aktuell elektive Kontrolle"
-    )
-    user = build_user_prompt(case)
-    assert "Blutung 1998" in user
-    assert "ferne Vorgeschichte" in user
-
-
-def test_example_response_descriptive_kavernom_class_0():
-    """geblutetes Kavernom only descriptively → expected class 0."""
-    raw = json.dumps(
-        {
-            "klasse": 0,
-            "label": "nicht_hämorrhagisch",
-            "sicherheit": "mittel",
-            "begruendung": "Geblutetes Kavernom nur beschreibend erwähnt, ohne akute/subakute Hämorrhagierelevanz.",
-            "evidenz": [
-                {
-                    "berichttyp": "01 Operationsbericht",
-                    "feld": "diag",
-                    "textstelle": "geblutetes Kavernom",
-                    "interpretation": "Beschreibend, keine akute Fallrelevanz",
-                }
-            ],
-            "historische_blutung_erwaehnt": True,
-            "historische_blutung_als_aktuell_gewertet": False,
-            "unsicherheitsgruende": [],
-        },
-        ensure_ascii=False,
-    )
-    result = parse_hemorrhage_response(raw, context="test_descriptive_kavernom")
-    assert result.success
-    assert result.prediction["klasse"] == 0
-
-
-def test_example_response_acute_kavernom_hemorrhage_class_1():
-    """akute Einblutung / Hämatomevakuation / symptomatische Blutung → expected class 1."""
-    raw = json.dumps(
-        {
-            "klasse": 1,
-            "label": "hämorrhagisch",
-            "sicherheit": "hoch",
-            "begruendung": "Akute symptomatische Einblutung mit Hämatomevakuation als OP-Grund.",
-            "evidenz": [
-                {
-                    "berichttyp": "01 Operationsbericht",
-                    "feld": "vorgehen",
-                    "textstelle": "Hämatomevakuation bei akuter symptomatischer Einblutung",
-                    "interpretation": "Akute klinisch relevante Blutung, behandelt im aktuellen Fall",
-                }
-            ],
-            "historische_blutung_erwaehnt": False,
-            "historische_blutung_als_aktuell_gewertet": False,
-            "unsicherheitsgruende": [],
-        },
-        ensure_ascii=False,
-    )
-    result = parse_hemorrhage_response(raw, context="test_acute_kavernom")
-    assert result.success
-    assert result.prediction["klasse"] == 1
-
-
-def test_example_response_chronic_kavernom_class_0():
-    """chronisch eingeblutetes Kavernom without acute relevance → expected class 0."""
-    raw = json.dumps(
-        {
-            "klasse": 0,
-            "label": "nicht_hämorrhagisch",
-            "sicherheit": "mittel",
-            "begruendung": "Chronisch eingeblutetes Kavernom ohne akute Hämorrhagierelevanz; elektive Resektion.",
-            "evidenz": [
-                {
-                    "berichttyp": "01 Operationsbericht",
-                    "feld": "diag",
-                    "textstelle": "chronisch eingeblutetes Kavernom",
-                    "interpretation": "Chronisch/alt, kein akutes hämorrhagisches Ereignis",
-                }
-            ],
-            "historische_blutung_erwaehnt": True,
-            "historische_blutung_als_aktuell_gewertet": False,
-            "unsicherheitsgruende": [],
-        },
-        ensure_ascii=False,
-    )
-    result = parse_hemorrhage_response(raw, context="test_chronic_kavernom")
-    assert result.success
-    assert result.prediction["klasse"] == 0
-
-
-def test_example_response_preoperative_kavernom_class_1():
-    """Expected model output shape for geblutetes Kavernom + Hämatomevakuation."""
-    raw = json.dumps(
-        {
-            "klasse": 1,
-            "label": "hämorrhagisch",
-            "sicherheit": "hoch",
-            "begruendung": "Geblutetes Kavernom war OP-Indikation; Hämatomevakuation behandelt präoperative Blutung im aktuellen Fall.",
-            "evidenz": [
-                {
-                    "berichttyp": "01 Operationsbericht",
-                    "feld": "diag",
-                    "textstelle": "geblutetes Kavernom",
-                    "interpretation": "Blutung im aktuellen Fallkontext, Indikation für OP",
-                }
-            ],
-            "historische_blutung_erwaehnt": True,
-            "historische_blutung_als_aktuell_gewertet": True,
-            "unsicherheitsgruende": [],
-        },
-        ensure_ascii=False,
-    )
-    result = parse_hemorrhage_response(raw, context="test_preop_kavernom")
-    assert result.success
-    assert result.prediction["klasse"] == 1
-    assert result.prediction["historische_blutung_erwaehnt"] is True
-    assert result.prediction["historische_blutung_als_aktuell_gewertet"] is True
-
-
-def test_example_response_remote_history_class_0():
-    """Expected model output shape for remote Blutung 1998 only."""
-    raw = json.dumps(
-        {
-            "klasse": 0,
-            "label": "nicht_hämorrhagisch",
-            "sicherheit": "mittel",
-            "begruendung": "Blutung 1998 nur ferne Vorgeschichte ohne Bezug zur aktuellen Behandlung.",
-            "evidenz": [],
-            "historische_blutung_erwaehnt": True,
-            "historische_blutung_als_aktuell_gewertet": False,
-            "unsicherheitsgruende": [],
-        },
-        ensure_ascii=False,
-    )
-    result = parse_hemorrhage_response(raw, context="test_remote_history")
-    assert result.success
-    assert result.prediction["klasse"] == 0
-    assert result.prediction["historische_blutung_erwaehnt"] is True
-    assert result.prediction["historische_blutung_als_aktuell_gewertet"] is False
+    assert "historische Blutung" in user
+    assert "historisch" in user
 
 
 def test_build_messages_includes_updated_system_prompt():
-    case = _case_with_op_text("geblutetes Kavernom, Hämatomevakuation")
+    case = _case_with_op_text("geblutetes Kavernom")
     messages = build_messages(case)
     assert messages[0]["role"] == "system"
-    assert "PRÄOPERATIVE BLUTUNG" in messages[0]["content"]
-    assert "KAVERNOM" in messages[0]["content"]
-    assert "Hämatomevakuation" in messages[1]["content"]
+    assert "haemorrhage_subtype" in messages[0]["content"]
+    assert "historische Blutung ist weiterhin eine Blutung" in messages[0]["content"]
+
+
+# --- Example response parsing (subtype hierarchy) -------------------------
+
+
+def test_historical_hemorrhage_parses_positive_with_subtype_historisch():
+    raw = _response(
+        klasse=1,
+        label="hämorrhagisch",
+        haemorrhage_subtype="historisch",
+        historische_blutung_erwaehnt=True,
+        historische_blutung_als_aktuell_gewertet=False,
+        begruendung="Status nach Blutung 1998.",
+    )
+    result = parse_hemorrhage_response(raw, context="hist")
+    assert result.success
+    assert result.prediction["klasse"] == 1
+    assert result.prediction["label"] == "hämorrhagisch"
+    assert result.prediction["haemorrhage_subtype"] == "historisch"
+
+
+def test_acute_hemorrhage_parses_positive_with_subtype_akut():
+    raw = _response(klasse=1, haemorrhage_subtype="akut", begruendung="akute Einblutung")
+    result = parse_hemorrhage_response(raw, context="akut")
+    assert result.success
+    assert result.prediction["klasse"] == 1
+    assert result.prediction["haemorrhage_subtype"] == "akut"
+
+
+def test_current_non_acute_lesion_parses_positive_with_subtype_nicht_akut():
+    raw = _response(
+        klasse=1, haemorrhage_subtype="nicht_akut", begruendung="chronische hämorrhagische Läsion"
+    )
+    result = parse_hemorrhage_response(raw, context="na")
+    assert result.success
+    assert result.prediction["klasse"] == 1
+    assert result.prediction["haemorrhage_subtype"] == "nicht_akut"
+
+
+def test_no_hemorrhage_evidence_parses_negative_with_null_subtype():
+    raw = _response(
+        klasse=0,
+        label="nicht_hämorrhagisch",
+        haemorrhage_subtype=None,
+        begruendung="Kavernom ohne Einblutung.",
+    )
+    result = parse_hemorrhage_response(raw, context="neg")
+    assert result.success
+    assert result.prediction["klasse"] == 0
+    assert result.prediction["haemorrhage_subtype"] is None
+
+
+def test_remote_history_text_supports_historical_positive_response():
+    """Remote history bleeding is hemorrhagic + historisch (not klasse 0)."""
+    raw = _response(
+        klasse=1,
+        haemorrhage_subtype="historisch",
+        begruendung="Frühere Blutung vor Jahren; aktuell keine akute Blutung.",
+        historische_blutung_erwaehnt=True,
+        historische_blutung_als_aktuell_gewertet=False,
+    )
+    result = parse_hemorrhage_response(raw, context="remote")
+    assert result.success
+    assert result.prediction["klasse"] == 1
+    assert result.prediction["haemorrhage_subtype"] == "historisch"
