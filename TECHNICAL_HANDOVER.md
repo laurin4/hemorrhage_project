@@ -87,30 +87,32 @@ src/
 
 ```bash
 python3 -m src.tasks.hemorrhage.run_case_pipeline --dry-run --limit 5
+python3 -m src.tasks.hemorrhage.run_case_pipeline --limit 20
 python3 -m src.tasks.hemorrhage.run_case_pipeline
 ```
 
-- Entry: `src/tasks/hemorrhage/run_case_pipeline.py`
-- Prompt: `prompts/hemorrhage_case_classification.txt`
-- Output: `data/outputs/hemorrhage_case_predictions.csv`
-- One case = one LLM call = one prediction row
-- No keyword prefilter; delirium `run_pipeline.py` unchanged
+- Entry: `src/tasks/hemorrhage/run_case_pipeline.py`; orchestration in `inference/runner.py`; LLM transport in `inference/llm_client.py`.
+- Prompt: `prompts/hemorrhage_case_classification.txt` (two-level; historical hemorrhage = `klasse=1` + `subtype=historisch`).
+- Output: `data/outputs/hemorrhage_case_predictions.csv` (incl. `haemorrhage_subtype` + debug columns `prompt_length_chars`, `structured_case_text_length`).
+- One case = one LLM call = one prediction row. No keyword prefilter; delirium `run_pipeline.py` unchanged.
+- **Robustness:** per-call timeout `HEMORRHAGE_LLM_TIMEOUT_SECONDS` (default 240), `HEMORRHAGE_LLM_MAX_RETRIES` (default 1, retries on `ReadTimeout`/`Timeout`/`ConnectionError`). On failure → `status=llm_failed` and the run continues. Predictions are written **incrementally** (partial-save safe).
 
 ### Phase 1b — Preliminary evaluation (IMPLEMENTED)
 
 ```bash
 python3 -m src.tasks.hemorrhage.build_prediction_review
 python3 -m src.tasks.hemorrhage.evaluate_predictions
+python3 -m src.tasks.hemorrhage.evaluate_predictions --include-verify-as-negative
 ```
 
 - Entry: `src/tasks/hemorrhage/evaluate_predictions.py`
-- Core logic: `src/tasks/hemorrhage/export/evaluate_predictions.py`
+- Core logic: `src/tasks/hemorrhage/evaluation/runner.py` (readable reports in `evaluation/report_format.py`; `export/evaluate_predictions.py` is a backward-compat shim).
 - Inputs: `data/outputs/hemorrhage_prediction_review.csv`, `hemorrhage_confusion_review.csv`
-- Outputs: `data/evaluation/` (metrics summary, confusion matrix, error cases, `plots/*.png`)
-- **Preliminary evaluation on labeled subset** — NOT final validation; Verify_Vaskulär-only cases excluded from default metrics
-- Optional sensitivity: `--include-verify-as-negative` treats verify_only as non_hemorrhagic
+- Outputs: `data/evaluation/` (metrics `.csv`/`.txt`/`.md`, confusion matrix, error cases, subtype tables `hemorrhage_subtype_distribution.csv` + `hemorrhage_subtype_by_reference_status.csv`, `plots/*.png`)
+- **Binary evaluation** = hämorrhagisch vs nicht_hämorrhagisch (historical counts as positive); subtype is **descriptive only** and never affects TP/TN/FP/FN. Verify_Vaskulär-only cases excluded from default metrics.
+- Optional sensitivity: `--include-verify-as-negative` treats verify_only as non_hemorrhagic.
 
-See **HANDOVER_SUMMARY.md** → “How to run on the server” for full copy-paste workflow.
+See **HANDOVER_SUMMARY.md** → “How to run on the server (copy-paste, full workflow)” for the complete copy-paste workflow incl. environment variables.
 
 ### Phase 0b — Real Excel inspection (IMPLEMENTED)
 

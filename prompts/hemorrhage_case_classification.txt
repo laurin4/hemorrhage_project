@@ -103,8 +103,19 @@ JSON-FELDER ZUR HISTORISCHEN BLUTUNG:
 - historische_blutung_erwaehnt = true, wenn eine Blutung in der Vorgeschichte/Anamnese erwähnt wird
 - historische_blutung_als_aktuell_gewertet = true, wenn die (historische) Blutung als aktuell fallrelevant gewertet wird; sonst false
 
+KOMPAKTE AUSGABE (WICHTIG):
+Antwort möglichst kompakt. Verwende nur die minimal notwendige Evidenz. Lange Zitate vermeiden.
+Verwende die Tokens für die Klassifikation, NICHT für lange Erklärungen.
+- evidenz: MAXIMAL 3 Einträge. Niemals mehr als 3. Nur die stärkste Evidenz.
+- evidenz[].textstelle: MAXIMAL 200 Zeichen. Bei längerem Quelltext sinnvoll kürzen
+  (z.B. «Frühere intracerebrale Blutung 2013 mit...» statt ganzem Absatz).
+- evidenz[].interpretation: MAXIMAL 1 kurzer Satz
+  (z.B. «Aktuelle Blutung wird als Operationsindikation beschrieben.»).
+- begruendung: MAXIMAL 2 kurze Sätze. Keine langen narrativen Zusammenfassungen.
+- Ziel: gesamte Antwort typischerweise < 1500 Zeichen.
+
 AUSGABE:
-Gib GENAU ein JSON-Objekt zurück (kein Markdown, kein Fliesstext ausserhalb des JSON).
+Gib NUR ein gültiges JSON-Objekt zurück. Kein Markdown, keine Erklärungen, kein Fliesstext ausserhalb des JSON.
 Alle Textfelder auf Deutsch.
 
 Schema:

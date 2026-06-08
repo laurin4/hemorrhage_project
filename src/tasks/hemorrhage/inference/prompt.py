@@ -82,6 +82,7 @@ Eine historische Blutung ist weiterhin eine Blutung: klasse=1, label=hämorrhagi
 Klassifiziere NICHT als nicht_hämorrhagisch, nur weil die Blutung nicht akut oder nicht aktuell ist.
 Verify_Vaskulär ist KEINE Klasse, nur Metadaten, und darf die Klassifikation nicht beeinflussen.
 Bei klasse=0 ist haemorrhage_subtype=null. Gib NICHT «unbekannt» als Subtyp aus.
+Antwort möglichst kompakt: max. 3 evidenz-Einträge, textstelle max. 200 Zeichen, interpretation max. 1 Satz, begruendung max. 2 kurze Sätze. Ziel < 1500 Zeichen.
 Antworte ausschliesslich mit einem JSON-Objekt auf Deutsch (Feldinhalte), ohne Markdown.
 """
 
@@ -92,4 +93,5 @@ _USER_PROMPT_REMINDER = """Erinnerung:
 - Aktuell fallrelevante, aber nicht akute hämorrhagische Läsion → subtype=nicht_akut (NICHT nicht_hämorrhagisch).
 - «geblutetes/eingeblutetes Kavernom» beschreibt ein Blutungsereignis → klasse=1; Subtyp je nach Zeitbezug. Kavernom OHNE Einblutung → nicht_hämorrhagisch.
 - Verify_Vaskulär darf die Klassifikation nicht beeinflussen.
-- nicht_hämorrhagisch (klasse=0) nur ohne jegliche hämorrhagische Evidenz → haemorrhage_subtype=null."""
+- nicht_hämorrhagisch (klasse=0) nur ohne jegliche hämorrhagische Evidenz → haemorrhage_subtype=null.
+- Antwort möglichst kompakt: max. 3 evidenz-Einträge, textstelle max. 200 Zeichen, interpretation max. 1 Satz, begruendung max. 2 kurze Sätze, Ziel < 1500 Zeichen. Lange Zitate vermeiden. Nur gültiges JSON."""

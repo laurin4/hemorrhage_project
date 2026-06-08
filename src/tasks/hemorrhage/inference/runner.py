@@ -69,6 +69,7 @@ PREDICTION_CSV_COLUMNS: List[str] = [
     "historische_blutung_als_aktuell_gewertet",
     "unsicherheitsgruende_json",
     "raw_llm_response",
+    "raw_response_length",
     "prompt_preview",
     "error_message",
     "parse_error_reason",
@@ -123,6 +124,7 @@ def _base_row(case: ClinicalCase, ref_lookup: ReferenceLookup) -> Dict[str, Any]
         "historische_blutung_als_aktuell_gewertet": "",
         "unsicherheitsgruende_json": "[]",
         "raw_llm_response": "",
+        "raw_response_length": 0,
         "prompt_preview": "",
         "error_message": "",
         "parse_error_reason": "",
@@ -202,6 +204,7 @@ def process_single_case(
             llm_call = call_llm
         raw = llm_call(messages) or ""
         row["raw_llm_response"] = raw
+        row["raw_response_length"] = len(raw)
     except Exception as exc:
         row["status"] = "llm_failed"
         row["error_message"] = f"{type(exc).__name__}: {exc}"

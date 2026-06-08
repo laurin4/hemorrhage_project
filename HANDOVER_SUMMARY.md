@@ -48,12 +48,24 @@ Case loading lives under `src/tasks/hemorrhage/io/` (`load_cases.py`, `reference
 **No additional Python packages** are required for this pipeline — only internal imports.  
 `wheelhouse_linux` is relevant for external dependency installation on the server, not for internal module paths.
 
-### How to run on the server (copy-paste)
+### How to run on the server (copy-paste, full workflow)
+
+This is the complete end-to-end sequence. Run every command from the project root.
 
 ```bash
 cd ~/hemorrhage_project
 source Ba_venv/bin/activate
 export PROJECT_TASK=hemorrhage
+
+# --- LLM connection + behaviour ---
+export LLM_PROVIDER=usz_api            # or "ollama"
+export USZ_LLM_URL=http://localhost:8100/generate
+export LLM_TEMPERATURE=0               # reproducible
+export LLM_TOP_P=1
+
+# --- LLM robustness / stability (recommended) ---
+export HEMORRHAGE_LLM_TIMEOUT_SECONDS=240   # per-call read timeout (default 240)
+export HEMORRHAGE_LLM_MAX_RETRIES=1         # auto-retry on timeout/connection error (default 1)
 
 # 1. Verify raw files exist
 ls -la data/raw/NCH_pidlist_opdat_ab_eb_op_SJO_pg_DRQ0001416.xlsx
@@ -65,30 +77,59 @@ python3 -m src.tasks.hemorrhage.inspect_data
 # 3. Reference label analytics
 python3 -m src.tasks.hemorrhage.analyze_reference_labels
 
-# 4. Dry-run prompts (no LLM)
+# 4. Dry-run prompts (no LLM) — sanity-check prompt assembly
 python3 -m src.tasks.hemorrhage.run_case_pipeline --dry-run --limit 5
 
-# 5. Limited LLM pilot
-export LLM_PROVIDER=usz_api
-export LLM_TEMPERATURE=0
-python3 -m src.tasks.hemorrhage.run_case_pipeline --limit 5
+# 5. Limited LLM pilot (recommended before the full run)
+python3 -m src.tasks.hemorrhage.run_case_pipeline --limit 20
 
-# 6. Full case inference
+# 6. Full case inference (one row per case, written incrementally)
 python3 -m src.tasks.hemorrhage.run_case_pipeline
 
-# 7. Build review exports
+# 7. Build review exports (also writes FN/FP detailed reviews + confusion review)
 python3 -m src.tasks.hemorrhage.build_prediction_review
 
-# 8. Preliminary evaluation (metrics + plots)
+# 8. Preliminary evaluation (metrics + readable reports + subtype tables + plots)
 python3 -m src.tasks.hemorrhage.evaluate_predictions
+#    optional exploratory sensitivity (verify_only treated as non_hemorrhagic):
+python3 -m src.tasks.hemorrhage.evaluate_predictions --include-verify-as-negative
+
+# 9. Inspect key results
+cat  data/evaluation/hemorrhage_metrics_summary.txt
+cat  data/evaluation/hemorrhage_subtype_distribution.csv
+head -20 data/outputs/hemorrhage_confusion_review.csv
+ls -lh data/evaluation/plots/
 ```
+
+`--limit N` (first N cases), `--case-id ID` (single case), `--dry-run` (no LLM) and
+`--output PATH` are available on `run_case_pipeline`.
 
 Expected outputs:
 
 - `data/inspection/` — schema, merge, label analytics
-- `data/outputs/hemorrhage_case_predictions.csv` — case predictions
-- `data/outputs/hemorrhage_prediction_review.csv` — unified qualitative review table
-- `data/evaluation/` — preliminary metrics, confusion matrix, plots
+- `data/outputs/hemorrhage_case_predictions.csv` — case predictions (incl. `klasse`, `label`, `haemorrhage_subtype`, debug columns `prompt_length_chars`, `structured_case_text_length`, `raw_response_length`)
+- `data/outputs/hemorrhage_parse_failures.csv` — debug rows for any `parse_failed` case
+- `data/outputs/hemorrhage_prediction_review.csv` — unified qualitative review table (incl. `predicted_haemorrhage_subtype`)
+- `data/outputs/hemorrhage_confusion_review.csv` — compact TP/TN/FP/FN review
+- `data/outputs/hemorrhage_false_negative_review.csv` / `hemorrhage_false_positive_review.csv` — detailed FN/FP reviews
+- `data/outputs/hemorrhage_prediction_review_summary.txt` — review summary
+- `data/evaluation/hemorrhage_metrics_summary.csv` / `.txt` / `.md` — metrics (raw + readable reports)
+- `data/evaluation/hemorrhage_confusion_matrix.csv`, `hemorrhage_error_cases.csv`
+- `data/evaluation/hemorrhage_subtype_distribution.csv`, `hemorrhage_subtype_by_reference_status.csv` — descriptive subtype tables
+- `data/evaluation/plots/` — confusion matrix, distributions, confidence-by-correctness, `predicted_haemorrhage_subtype_distribution.png`, `subtype_by_reference_status.png`
+
+### LLM robustness / stability (since stability update)
+
+The pipeline never crashes on a single slow or failed LLM call:
+
+- `HEMORRHAGE_LLM_TIMEOUT_SECONDS` (default **240**) — per-call read timeout.
+- `HEMORRHAGE_LLM_MAX_RETRIES` (default **1**) — auto-retry only on `ReadTimeout` / `Timeout` / `ConnectionError`, 5 s wait between attempts.
+- On exhausted retries: the case is recorded as `status=llm_failed` with a clear `error_message`, and the run **continues** with the next case.
+- Predictions are written **incrementally** (header + flush per case), so completed rows survive an interrupted run.
+- Per-case log line before each call: `[i/total] <case_id> text_length=… prompt_length=… reports=…`.
+- End-of-run summary prints `successful_cases` / `parse_failed_cases` / `llm_failed_cases`.
+- Debug columns `prompt_length_chars`, `structured_case_text_length` + `raw_response_length` help spot oversized cases / verbose responses that time out.
+- The prompt enforces **compact output** (max 3 evidenz items, `textstelle` ≤200 chars, `interpretation` 1 sentence, `begruendung` ≤2 sentences, target <1500 chars) to reduce generation time without changing classification.
 
 ### Prediction review export (main qualitative artifact)
 
@@ -155,6 +196,10 @@ Outputs:
 | `PROJECT_TASK` | `hemorrhage` | Task selector in `paths.py` |
 | `FLAT_REPORTS_INPUT_PATH` | `data/raw/reports.csv` | Flat report input |
 | `HEMORRHAGE_PREFILTER_MODE` | `disabled` | No delirium keyword auto-skip |
+| `LLM_PROVIDER` | `usz_api` | LLM backend (`usz_api` or `ollama`) |
+| `USZ_LLM_URL` | `http://localhost:8100/generate` | USZ LLM endpoint |
+| `HEMORRHAGE_LLM_TIMEOUT_SECONDS` | `240` | Per-call LLM read timeout |
+| `HEMORRHAGE_LLM_MAX_RETRIES` | `1` | Auto-retries on timeout/connection error (5 s wait) |
 
 ### Delirium pipeline (legacy, unchanged)
 
