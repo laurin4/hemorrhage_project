@@ -20,11 +20,22 @@ The target is no longer purely binary. The pipeline now produces a two-level lab
 - **Historical hemorrhage is still hemorrhage:** a past/remote bleed is `klasse=1` + `subtype="historisch"`, NEVER `klasse=0`. (`akut` = current acute event; `nicht_akut` = current non-acute finding; `historisch` = past/old, even if acute at the time.)
 - **`Verify_Vaskulär` is metadata only** — never a class. It must not influence classification, and `verify_only` reference cases stay excluded from binary metrics (unless `--include-verify-as-negative`).
 
+### Two-stage hierarchical inference (current pipeline path)
+
+To reduce per-call token generation and `ReadTimeout`s, the runner issues **two sequential LLM calls** per case instead of one combined call:
+
+- **Stage 1 — binary** (`prompts/hemorrhage_binary_classification.txt`, builders `build_binary_messages` / `build_binary_user_prompt`, parser `parse_binary_response`): decides only `klasse` 0/1; leaves `haemorrhage_subtype = None`.
+- **Stage 2 — subtype** (`prompts/hemorrhage_subtype_classification.txt`, builders `build_subtype_messages` / `build_subtype_user_prompt`, parser `parse_subtype_response` → `SubtypeParseResult`): runs **only when `klasse=1`**; decides only the subtype, assuming hemorrhage exists.
+- Merge: `runner._merge_subtype` combines Stage 1 (klasse/label/evidence/reasoning) with Stage 2 (subtype/evidence/reasoning) into one row. CSV schema is unchanged.
+- Failure semantics: Stage 1 LLM error → `status=llm_failed`; Stage 1 parse error → `status=parse_failed` (`parse_failures` CSV uses the binary raw). Stage 2 LLM/parse failure does **not** drop the case → it stays `hämorrhagisch` with `haemorrhage_subtype="unbekannt"` and `subtype_stage_status` ∈ {`llm_failed`, `subtype_unknown`}.
+- New columns: `binary_stage_status`, `subtype_stage_status`, `binary_prompt_length`, `subtype_prompt_length`. `raw_response_length` = len(binary raw) + len(subtype raw); `raw_llm_response` holds both stages separated by `--- SUBTYPE STAGE ---`.
+- `parse.py` shares a `_parse_binary_core` helper between the combined and binary parsers, so `parse_hemorrhage_response` (single-call) behaves exactly as before and remains for tests/legacy.
+
 Implementation touch points:
 
-- Prompt: `prompts/hemorrhage_case_classification.txt`, fallback in `inference/prompt.py`.
+- Prompts: two-stage `prompts/hemorrhage_binary_classification.txt` + `prompts/hemorrhage_subtype_classification.txt`; combined `prompts/hemorrhage_case_classification.txt` (single-call/legacy). Fallbacks in `inference/prompt.py`.
 - Parser/schema: `inference/parse.py` (`normalize_haemorrhage_subtype`, `_resolve_haemorrhage_subtype`, `VALID_HAEMORRHAGE_SUBTYPES`, `SUBTYPE_UNKNOWN`). Subtype normalization maps `acute→akut`, `history/historical→historisch`, `non_acute/chronisch/chronic/nicht-akut→nicht_akut`.
-- Prediction CSV: `haemorrhage_subtype` column (`inference/runner.py`).
+- Prediction CSV: `haemorrhage_subtype` + two-stage columns (`binary_stage_status`, `subtype_stage_status`, `binary_prompt_length`, `subtype_prompt_length`) in `inference/runner.py`.
 - Review exports: `predicted_haemorrhage_subtype` + `reference_haemorrhage_subtype` (empty placeholder) in prediction/confusion/FN/FP CSVs (`export/prediction_review.py`).
 - Reference: `io/reference_lookup.py` adds `reference_haemorrhage_subtype = ""` (no invented subtype).
 - Evaluation: `evaluation/runner.py` adds `compute_subtype_counts`, subtype distribution + subtype-by-reference CSVs, two subtype plots; binary metric computation is unchanged. Subtype accuracy is **not** computed (descriptive only).
@@ -92,9 +103,9 @@ python3 -m src.tasks.hemorrhage.run_case_pipeline
 ```
 
 - Entry: `src/tasks/hemorrhage/run_case_pipeline.py`; orchestration in `inference/runner.py`; LLM transport in `inference/llm_client.py`.
-- Prompt: `prompts/hemorrhage_case_classification.txt` (two-level; historical hemorrhage = `klasse=1` + `subtype=historisch`).
-- Output: `data/outputs/hemorrhage_case_predictions.csv` (incl. `haemorrhage_subtype` + debug columns `prompt_length_chars`, `structured_case_text_length`).
-- One case = one LLM call = one prediction row. No keyword prefilter; delirium `run_pipeline.py` unchanged.
+- Prompts: two-stage `prompts/hemorrhage_binary_classification.txt` (Stage 1) + `prompts/hemorrhage_subtype_classification.txt` (Stage 2); historical hemorrhage = `klasse=1` + `subtype=historisch`.
+- Output: `data/outputs/hemorrhage_case_predictions.csv` (incl. `haemorrhage_subtype`, `binary_stage_status`, `subtype_stage_status`, `binary_prompt_length`, `subtype_prompt_length` + debug columns `prompt_length_chars`, `structured_case_text_length`, `raw_response_length`).
+- One case = one prediction row. **Two LLM calls** for hemorrhagic cases (binary + subtype), **one** for non-hemorrhagic (subtype skipped). No keyword prefilter; delirium `run_pipeline.py` unchanged.
 - **Robustness:** per-call timeout `HEMORRHAGE_LLM_TIMEOUT_SECONDS` (default 240), `HEMORRHAGE_LLM_MAX_RETRIES` (default 1, retries on `ReadTimeout`/`Timeout`/`ConnectionError`). On failure → `status=llm_failed` and the run continues. Predictions are written **incrementally** (partial-save safe).
 
 ### Phase 1b — Preliminary evaluation (IMPLEMENTED)

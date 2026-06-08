@@ -101,7 +101,17 @@ python3 -m src.tasks.hemorrhage.run_case_pipeline [OPTIONS]
 | `--output PATH` | Custom CSV path |
 | `--reports` / `--reference` | Override Excel paths |
 
-Prompt: `prompts/hemorrhage_case_classification.txt` (German, structured JSON).
+### Two-stage hierarchical inference (architecture)
+
+Inference is split into two sequential LLM calls per case to cut token generation and avoid `ReadTimeout`s:
+
+- **Stage 1 — binary** (`prompts/hemorrhage_binary_classification.txt`): decides only `klasse` 0/1 (`nicht_hämorrhagisch` vs `hämorrhagisch`). No subtype.
+- **Stage 2 — subtype** (`prompts/hemorrhage_subtype_classification.txt`): runs **only when `klasse=1`**; decides only `haemorrhage_subtype` ∈ {`historisch`, `nicht_akut`, `akut`}. It assumes the hemorrhage already exists and must not reconsider it.
+- The runner (`process_single_case`) merges Stage 1 + Stage 2 into one prediction row; the CSV schema is unchanged.
+- Non-hemorrhagic cases terminate after Stage 1, so only positives pay for subtype reasoning (`subtype_stage_status=skipped`).
+- The original combined prompt (`prompts/hemorrhage_case_classification.txt`) and `parse_hemorrhage_response` remain available for single-call use/tests, but the pipeline uses the two-stage path.
+
+New logging/diagnostic columns: `binary_stage_status`, `subtype_stage_status`, `binary_prompt_length`, `subtype_prompt_length`. `raw_response_length` is the sum of both stages' raw output; `prompt_length_chars` is the sum of both stage prompts.
 
 ### Two-level classification (supervisor clarification)
 
@@ -143,8 +153,9 @@ The pipeline never crashes on a single slow/failed LLM call:
 - On exhausted retries the case is recorded as `status=llm_failed` with `error_message="<ExcType> after <timeout> seconds (retries=N)"` and the run continues.
 - Predictions are written **incrementally** (header + flush per case), so completed rows survive an interrupted run.
 - Debug columns `prompt_length_chars`, `structured_case_text_length` and `raw_response_length` help identify oversized cases / verbose responses that cause timeouts.
-- The prompt enforces compact output (≤3 evidenz items, `textstelle` ≤200 chars, `interpretation` 1 sentence, `begruendung` ≤2 sentences, target <1500 chars) to cut generation time without changing classification quality.
-- A per-case log line is emitted before each call: `[i/total] <case_id> text_length=… prompt_length=… reports=…`.
+- The prompts enforce compact output (≤3 evidenz items, `textstelle` ≤200 chars, `interpretation` 1 sentence, `begruendung` ≤2 sentences) to cut generation time without changing classification quality.
+- **Two-stage inference** is the primary timeout mitigation: non-hemorrhagic cases finish after the light binary call and never trigger subtype reasoning. If Stage 2 alone times out/fails, the case stays `hämorrhagisch` with `haemorrhage_subtype="unbekannt"` (`subtype_stage_status=llm_failed`) — Stage 1 is preserved, not lost.
+- A per-case log line is emitted before each call: `[i/total] <case_id> text_length=… binary_prompt_length=… reports=…`.
 - End-of-run summary prints `successful_cases` / `parse_failed_cases` / `llm_failed_cases`.
 
 Delirium pipeline: `src.pipeline.run_pipeline` — **not used** for hemorrhage.

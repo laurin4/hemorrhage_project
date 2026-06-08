@@ -106,7 +106,10 @@ def test_dry_run_does_not_invoke_parser(tmp_path: Path):
     out = tmp_path / "preds.csv"
 
     with patch(
-        "src.tasks.hemorrhage.inference.runner.parse_hemorrhage_response",
+        "src.tasks.hemorrhage.inference.runner.parse_binary_response",
+        side_effect=AssertionError("parser must not run in dry-run"),
+    ), patch(
+        "src.tasks.hemorrhage.inference.runner.parse_subtype_response",
         side_effect=AssertionError("parser must not run in dry-run"),
     ):
         result = run_hemorrhage_case_pipeline(

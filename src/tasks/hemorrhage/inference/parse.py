@@ -476,19 +476,25 @@ def _resolve_klasse_label(
     return klasse, label, None
 
 
-def parse_hemorrhage_response(raw_output: str, *, context: str) -> HemorrhageParseResult:
+def _parse_binary_core(
+    raw_output: str, context: str
+) -> Tuple[Optional[HemorrhageParseResult], Optional[Dict[str, Any]], Optional[Dict[str, Any]], str]:
     """
-    Parse LLM output → normalized prediction dict.
+    Shared binary (klasse/label + reasoning) parsing for both single-call and
+    two-stage flows.
 
-    Success requires extractable klasse + label. Optional fields use defaults.
+    Returns ``(failure_result, out_prediction, parsed_dict, repair)``.
+    - On failure: ``(HemorrhageParseResult, None, None, "")``.
+    - On success: ``(None, out, parsed, repair)`` with ``out["haemorrhage_subtype"]``
+      left as ``None`` (subtype resolution is the caller's responsibility).
     """
     if not raw_output or not str(raw_output).strip():
-        return _fail("empty_llm_response", "empty LLM response")
+        return _fail("empty_llm_response", "empty LLM response"), None, None, ""
 
     try:
         parsed, detail, repair = _parse_llm_json_dict(raw_output, context)
     except Exception as exc:
-        return _fail("unexpected_exception", str(exc))
+        return _fail("unexpected_exception", str(exc)), None, None, ""
 
     if parsed is None:
         reason = "json_decode_error" if detail and "json" in detail.lower() else "no_json_object_found"
@@ -496,17 +502,22 @@ def parse_hemorrhage_response(raw_output: str, *, context: str) -> HemorrhagePar
             reason = "no_json_object_found"
         if "Invalid control character" in detail:
             reason = "json_decode_error"
-        return _fail(reason, detail)
+        return _fail(reason, detail), None, None, ""
 
     klasse, label, conflict = _resolve_klasse_label(parsed)
     if klasse is None or label is None:
-        return _fail("missing_prediction_fields", conflict or detail)
+        return _fail("missing_prediction_fields", conflict or detail), None, None, ""
 
     if conflict:
         partial = _empty_prediction()
         partial["klasse"] = klasse
         partial["label"] = label
-        return _fail("invalid_klasse_label_combination", conflict, partial=partial)
+        return (
+            _fail("invalid_klasse_label_combination", conflict, partial=partial),
+            None,
+            None,
+            "",
+        )
 
     out = _empty_prediction()
     out["klasse"] = klasse
@@ -523,9 +534,22 @@ def parse_hemorrhage_response(raw_output: str, *, context: str) -> HemorrhagePar
     out["unsicherheitsgruende"] = _normalize_unsicherheitsgruende(
         parsed.get("unsicherheitsgruende")
     )
+    return None, out, parsed, repair
+
+
+def parse_hemorrhage_response(raw_output: str, *, context: str) -> HemorrhageParseResult:
+    """
+    Parse a single combined LLM output → normalized prediction dict.
+
+    Success requires extractable klasse + label. Optional fields use defaults.
+    Resolves haemorrhage_subtype from the same payload (single-call mode).
+    """
+    fail, out, parsed, repair = _parse_binary_core(raw_output, context)
+    if fail is not None:
+        return fail
 
     subtype, subtype_uncertain = _resolve_haemorrhage_subtype(
-        parsed.get("haemorrhage_subtype"), label
+        parsed.get("haemorrhage_subtype"), out["label"]
     )
     out["haemorrhage_subtype"] = subtype
     if subtype_uncertain:
@@ -536,6 +560,117 @@ def parse_hemorrhage_response(raw_output: str, *, context: str) -> HemorrhagePar
         out["unsicherheitsgruende"] = reasons
 
     return _ok(out, parse_repair_applied=repair)
+
+
+def parse_binary_response(raw_output: str, *, context: str) -> HemorrhageParseResult:
+    """
+    Parse Stage 1 (binary) LLM output → prediction dict WITHOUT subtype.
+
+    ``haemorrhage_subtype`` is left as ``None``; the subtype is decided in
+    Stage 2 (only for klasse=1). Same success/failure semantics as the combined
+    parser.
+    """
+    fail, out, _parsed, repair = _parse_binary_core(raw_output, context)
+    if fail is not None:
+        return fail
+    out["haemorrhage_subtype"] = None
+    return _ok(out, parse_repair_applied=repair)
+
+
+@dataclass
+class SubtypeParseResult:
+    """Structured Stage 2 (subtype) parse outcome."""
+
+    haemorrhage_subtype: Optional[str] = None
+    sicherheit: str = "unbekannt"
+    begruendung: str = ""
+    evidenz: List[dict] = field(default_factory=list)
+    unsicherheitsgruende: List[str] = field(default_factory=list)
+    success: bool = False
+    subtype_uncertain: bool = False
+    error_message: str = ""
+    parse_error_reason: str = ""
+    parse_error_detail: str = ""
+    parse_repair_applied: str = ""
+
+
+def parse_subtype_response(raw_output: str, *, context: str) -> SubtypeParseResult:
+    """
+    Parse Stage 2 (subtype-only) LLM output.
+
+    Stage 2 assumes hemorrhage already exists; it only chooses
+    akut / nicht_akut / historisch. A failed/unparseable response does not
+    crash the pipeline: the subtype falls back to ``unbekannt`` and the caller
+    records the uncertainty. ``success`` reflects whether a usable JSON object
+    with a recognized subtype was produced.
+    """
+    if not raw_output or not str(raw_output).strip():
+        return SubtypeParseResult(
+            haemorrhage_subtype=SUBTYPE_UNKNOWN,
+            subtype_uncertain=True,
+            success=False,
+            error_message="empty_llm_response: empty LLM response",
+            parse_error_reason="empty_llm_response",
+        )
+
+    try:
+        parsed, detail, repair = _parse_llm_json_dict(raw_output, context)
+    except Exception as exc:
+        return SubtypeParseResult(
+            haemorrhage_subtype=SUBTYPE_UNKNOWN,
+            subtype_uncertain=True,
+            success=False,
+            error_message=f"unexpected_exception: {exc}",
+            parse_error_reason="unexpected_exception",
+            parse_error_detail=str(exc)[:2000],
+        )
+
+    if parsed is None:
+        reason = "json_decode_error" if detail and "json" in detail.lower() else "no_json_object_found"
+        if "no JSON object" in detail or "no json object" in detail.lower():
+            reason = "no_json_object_found"
+        if "Invalid control character" in detail:
+            reason = "json_decode_error"
+        return SubtypeParseResult(
+            haemorrhage_subtype=SUBTYPE_UNKNOWN,
+            subtype_uncertain=True,
+            success=False,
+            error_message=f"{reason}: {detail}" if detail else reason,
+            parse_error_reason=reason if reason in _PARSE_ERROR_REASONS else "unexpected_exception",
+            parse_error_detail=detail[:2000] if detail else "",
+        )
+
+    normalized = normalize_haemorrhage_subtype(parsed.get("haemorrhage_subtype"))
+    sicherheit = _normalize_sicherheit(parsed.get("sicherheit"))
+    begruendung = str(parsed.get("begruendung", "") or "").strip()
+    evidenz = _normalize_evidenz(parsed.get("evidenz"))
+    unsicherheit = _normalize_unsicherheitsgruende(parsed.get("unsicherheitsgruende"))
+
+    if normalized in VALID_HAEMORRHAGE_SUBTYPES:
+        return SubtypeParseResult(
+            haemorrhage_subtype=normalized,
+            sicherheit=sicherheit,
+            begruendung=begruendung,
+            evidenz=evidenz,
+            unsicherheitsgruende=unsicherheit,
+            success=True,
+            subtype_uncertain=False,
+            parse_repair_applied=repair,
+        )
+
+    # JSON parsed but subtype missing/unrecognized → fall back to unbekannt.
+    return SubtypeParseResult(
+        haemorrhage_subtype=SUBTYPE_UNKNOWN,
+        sicherheit=sicherheit,
+        begruendung=begruendung,
+        evidenz=evidenz,
+        unsicherheitsgruende=unsicherheit,
+        success=False,
+        subtype_uncertain=True,
+        error_message="haemorrhage_subtype fehlt oder unklar",
+        parse_error_reason="missing_prediction_fields",
+        parse_repair_applied=repair,
+    )
 
 
 def parse_hemorrhage_response_legacy(

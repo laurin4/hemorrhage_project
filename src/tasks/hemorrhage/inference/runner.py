@@ -29,10 +29,17 @@ from src.tasks.hemorrhage.io.reference_lookup import (
 from src.tasks.hemorrhage.inference.parse import (
     evidenz_to_json,
     list_to_json,
-    parse_hemorrhage_response,
+    parse_binary_response,
+    parse_subtype_response,
     preview_snippet,
 )
-from src.tasks.hemorrhage.inference.prompt import build_messages, prompt_preview
+from src.tasks.hemorrhage.inference.prompt import (
+    build_binary_messages,
+    build_subtype_messages,
+    prompt_preview,
+)
+
+SUBTYPE_UNCERTAIN_NOTE = "haemorrhage_subtype fehlt oder unklar (auf 'unbekannt' gesetzt)"
 
 LOGGER = logging.getLogger(__name__)
 
@@ -58,7 +65,11 @@ PREDICTION_CSV_COLUMNS: List[str] = [
     "has_austrittsbericht",
     "structured_case_text_length",
     "prompt_length_chars",
+    "binary_prompt_length",
+    "subtype_prompt_length",
     "status",
+    "binary_stage_status",
+    "subtype_stage_status",
     "klasse",
     "label",
     "haemorrhage_subtype",
@@ -113,7 +124,11 @@ def _base_row(case: ClinicalCase, ref_lookup: ReferenceLookup) -> Dict[str, Any]
         "has_austrittsbericht": TYPUS_AUSTRITTSBERICHT in case.reports,
         "structured_case_text_length": len(stext),
         "prompt_length_chars": "",
+        "binary_prompt_length": "",
+        "subtype_prompt_length": "",
         "status": "",
+        "binary_stage_status": "",
+        "subtype_stage_status": "",
         "klasse": "",
         "label": "",
         "haemorrhage_subtype": "",
@@ -162,6 +177,33 @@ def _prompt_length_chars(messages: Sequence[Dict[str, Any]]) -> int:
     return total
 
 
+def _merge_subtype(
+    binary_prediction: Dict[str, Any],
+    subtype_result,
+) -> Dict[str, Any]:
+    """Combine Stage 1 (binary) prediction with Stage 2 (subtype) result."""
+    merged = dict(binary_prediction)
+    merged["haemorrhage_subtype"] = subtype_result.haemorrhage_subtype
+
+    base_begr = str(merged.get("begruendung") or "").strip()
+    sub_begr = str(subtype_result.begruendung or "").strip()
+    if sub_begr:
+        merged["begruendung"] = (
+            f"{base_begr} | Subtyp: {sub_begr}" if base_begr else f"Subtyp: {sub_begr}"
+        )
+
+    merged["evidenz"] = (merged.get("evidenz") or []) + (subtype_result.evidenz or [])
+
+    reasons = list(merged.get("unsicherheitsgruende") or [])
+    for note in subtype_result.unsicherheitsgruende or []:
+        if note and note not in reasons:
+            reasons.append(note)
+    if subtype_result.subtype_uncertain and SUBTYPE_UNCERTAIN_NOTE not in reasons:
+        reasons.append(SUBTYPE_UNCERTAIN_NOTE)
+    merged["unsicherheitsgruende"] = reasons
+    return merged
+
+
 def process_single_case(
     case: ClinicalCase,
     ref_lookup: ReferenceLookup,
@@ -171,65 +213,142 @@ def process_single_case(
     case_index: Optional[int] = None,
     total_cases: Optional[int] = None,
 ) -> Dict[str, Any]:
+    """
+    Two-stage hierarchical inference for one case.
+
+    Stage 1 (binary): hämorrhagisch vs. nicht_hämorrhagisch.
+    Stage 2 (subtype): only when klasse=1 — akut / nicht_akut / historisch.
+    Results are merged into a single prediction row (schema unchanged).
+    """
     row = _base_row(case, ref_lookup)
 
-    messages = build_messages(case)
-    prompt_len = _prompt_length_chars(messages)
-    row["prompt_length_chars"] = prompt_len
+    binary_messages = build_binary_messages(case)
+    binary_prompt_len = _prompt_length_chars(binary_messages)
+    row["binary_prompt_length"] = binary_prompt_len
+    row["prompt_length_chars"] = binary_prompt_len
 
-    idx_label = (
-        f"[{case_index}/{total_cases}] " if case_index and total_cases else ""
-    )
+    idx_label = f"[{case_index}/{total_cases}] " if case_index and total_cases else ""
     text_len = row["structured_case_text_length"]
     reports = row.get("available_report_types", "")
     LOGGER.info(
-        "%s%s text_length=%s prompt_length=%s reports=%s",
+        "%s%s text_length=%s binary_prompt_length=%s reports=%s",
         idx_label,
         case.case_id,
         text_len,
-        prompt_len,
+        binary_prompt_len,
         reports,
     )
 
     if dry_run:
         row["status"] = "dry_run"
+        row["binary_stage_status"] = "dry_run"
+        row["subtype_stage_status"] = "dry_run"
         row["prompt_preview"] = prompt_preview(case)
         return row
 
-    raw = ""
-    try:
-        if llm_call is None:
-            from src.tasks.hemorrhage.inference.llm_client import call_llm
+    if llm_call is None:
+        from src.tasks.hemorrhage.inference.llm_client import call_llm
 
-            llm_call = call_llm
-        raw = llm_call(messages) or ""
-        row["raw_llm_response"] = raw
-        row["raw_response_length"] = len(raw)
+        llm_call = call_llm
+
+    # --- Stage 1: binary classification --------------------------------------
+    binary_raw = ""
+    try:
+        binary_raw = llm_call(binary_messages) or ""
     except Exception as exc:
         row["status"] = "llm_failed"
+        row["binary_stage_status"] = "llm_failed"
         row["error_message"] = f"{type(exc).__name__}: {exc}"
         LOGGER.warning(
-            "%sLLM_FAILED case_id=%s text_length=%s prompt_length=%s error=%s",
+            "%sLLM_FAILED stage=binary case_id=%s text_length=%s prompt_length=%s error=%s",
             idx_label,
             case.case_id,
             text_len,
-            prompt_len,
+            binary_prompt_len,
             row["error_message"],
         )
         return row
 
-    parse_result = parse_hemorrhage_response(raw, context=f"hemorrhage_case:{case.case_id}")
-    _apply_prediction(row, parse_result.prediction)
-    row["parse_error_reason"] = parse_result.parse_error_reason
-    row["parse_error_detail"] = parse_result.parse_error_detail
-    row["parse_repair_applied"] = parse_result.parse_repair_applied
+    row["raw_llm_response"] = binary_raw
+    row["raw_response_length"] = len(binary_raw)
 
-    if parse_result.success:
-        row["status"] = "success"
-    else:
+    binary_result = parse_binary_response(
+        binary_raw, context=f"hemorrhage_binary:{case.case_id}"
+    )
+    _apply_prediction(row, binary_result.prediction)
+    row["parse_error_reason"] = binary_result.parse_error_reason
+    row["parse_error_detail"] = binary_result.parse_error_detail
+    row["parse_repair_applied"] = binary_result.parse_repair_applied
+
+    if not binary_result.success:
         row["status"] = "parse_failed"
-        row["error_message"] = parse_result.error_message
+        row["binary_stage_status"] = "parse_failed"
+        row["error_message"] = binary_result.error_message
+        return row
 
+    row["binary_stage_status"] = "success"
+    klasse = binary_result.prediction.get("klasse")
+
+    # --- Stage 2 only for hemorrhagic cases ----------------------------------
+    if klasse != 1:
+        row["status"] = "success"
+        row["subtype_stage_status"] = "skipped"
+        LOGGER.info(
+            "%s%s stage1=nicht_hämorrhagisch → stage2 skipped",
+            idx_label,
+            case.case_id,
+        )
+        return row
+
+    subtype_messages = build_subtype_messages(case)
+    subtype_prompt_len = _prompt_length_chars(subtype_messages)
+    row["subtype_prompt_length"] = subtype_prompt_len
+    row["prompt_length_chars"] = binary_prompt_len + subtype_prompt_len
+
+    subtype_raw = ""
+    try:
+        subtype_raw = llm_call(subtype_messages) or ""
+    except Exception as exc:
+        # Stage 1 succeeded (hemorrhagic); subtype failed → keep positive,
+        # subtype falls back to 'unbekannt'. Not a hard pipeline failure.
+        row["subtype_stage_status"] = "llm_failed"
+        row["haemorrhage_subtype"] = "unbekannt"
+        reasons = list((binary_result.prediction.get("unsicherheitsgruende") or []))
+        if SUBTYPE_UNCERTAIN_NOTE not in reasons:
+            reasons.append(SUBTYPE_UNCERTAIN_NOTE)
+        row["unsicherheitsgruende_json"] = list_to_json(reasons)
+        row["status"] = "success"
+        row["error_message"] = f"subtype_stage: {type(exc).__name__}: {exc}"
+        LOGGER.warning(
+            "%sLLM_FAILED stage=subtype case_id=%s error=%s (kept hämorrhagisch, subtype=unbekannt)",
+            idx_label,
+            case.case_id,
+            row["error_message"],
+        )
+        return row
+
+    row["raw_llm_response"] = (
+        f"{binary_raw}\n\n--- SUBTYPE STAGE ---\n\n{subtype_raw}"
+    )
+    row["raw_response_length"] = len(binary_raw) + len(subtype_raw)
+
+    subtype_result = parse_subtype_response(
+        subtype_raw, context=f"hemorrhage_subtype:{case.case_id}"
+    )
+    merged = _merge_subtype(binary_result.prediction, subtype_result)
+    _apply_prediction(row, merged)
+
+    row["status"] = "success"
+    row["subtype_stage_status"] = (
+        "success" if subtype_result.success else "subtype_unknown"
+    )
+    LOGGER.info(
+        "%s%s stage1=hämorrhagisch stage2=%s subtype=%s",
+        idx_label,
+        case.case_id,
+        row["subtype_stage_status"],
+        merged.get("haemorrhage_subtype"),
+    )
     return row
 
 

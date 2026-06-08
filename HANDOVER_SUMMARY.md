@@ -18,6 +18,16 @@ Classify clinical **cases** from OP / Eintritts / Austritts reports using struct
 - **`Verify_Vaskulär` is metadata/reference only**, NOT a ground-truth class, and is excluded from binary TP/TN/FP/FN by default.
 - **Binary evaluation is unchanged** (historical counts as positive); **subtype analysis is descriptive only** (no validated reference subtype labels yet).
 
+### Inference architecture — two-stage (current)
+
+To reduce token generation and `ReadTimeout`s, each case runs **two sequential LLM calls** instead of one combined call:
+
+- **Stage 1 — binary** (`prompts/hemorrhage_binary_classification.txt`): only `klasse` 0/1. No subtype.
+- **Stage 2 — subtype** (`prompts/hemorrhage_subtype_classification.txt`): only when `klasse=1`; only `haemorrhage_subtype` (historisch/nicht_akut/akut), assuming hemorrhage exists.
+- The runner merges both stages into one row; CSV schema unchanged. Non-hemorrhagic cases skip Stage 2 (`subtype_stage_status=skipped`).
+- New columns: `binary_stage_status`, `subtype_stage_status`, `binary_prompt_length`, `subtype_prompt_length`.
+- The old combined prompt (`prompts/hemorrhage_case_classification.txt`) + `parse_hemorrhage_response` are kept for single-call/testing but are no longer the pipeline path.
+
 ### Case definition
 
 ```text
@@ -107,7 +117,7 @@ ls -lh data/evaluation/plots/
 Expected outputs:
 
 - `data/inspection/` — schema, merge, label analytics
-- `data/outputs/hemorrhage_case_predictions.csv` — case predictions (incl. `klasse`, `label`, `haemorrhage_subtype`, debug columns `prompt_length_chars`, `structured_case_text_length`, `raw_response_length`)
+- `data/outputs/hemorrhage_case_predictions.csv` — case predictions (incl. `klasse`, `label`, `haemorrhage_subtype`, two-stage columns `binary_stage_status`, `subtype_stage_status`, `binary_prompt_length`, `subtype_prompt_length`, and debug columns `prompt_length_chars`, `structured_case_text_length`, `raw_response_length`)
 - `data/outputs/hemorrhage_parse_failures.csv` — debug rows for any `parse_failed` case
 - `data/outputs/hemorrhage_prediction_review.csv` — unified qualitative review table (incl. `predicted_haemorrhage_subtype`)
 - `data/outputs/hemorrhage_confusion_review.csv` — compact TP/TN/FP/FN review
