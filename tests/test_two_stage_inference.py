@@ -27,10 +27,12 @@ from src.tasks.hemorrhage.inference.prompt import (
 )
 from src.tasks.hemorrhage.inference.runner import (
     PREDICTION_CSV_COLUMNS,
+    _filter_to_cohort,
     process_single_case,
     run_hemorrhage_case_pipeline,
     write_predictions_csv,
 )
+from src.tasks.hemorrhage.io.reference_lookup import reference_binary_status
 
 
 def _case(text: str):
@@ -108,12 +110,20 @@ def test_binary_prompt_is_binary_only():
     # Stage 1 must not request a subtype decision and must not emit the
     # subtype output field.
     assert "haemorrhage_subtype" not in prompt
-    assert "Entscheide NICHT über einen Subtyp" in prompt
+    assert "KEIN Subtyp" in prompt
+    # Compact Stage 1 output uses kurzbegruendung, no evidence list.
+    assert "kurzbegruendung" in prompt
 
 
 def test_binary_prompt_keeps_historical_positive():
     prompt = load_binary_system_prompt().lower()
-    assert "historische blutung ist weiterhin eine blutung" in prompt
+    assert "historische blutung ist weiterhin klasse=1" in prompt
+    assert "niemals klasse=0" in prompt
+
+
+def test_binary_prompt_states_cavernoma_alone_not_hemorrhagic():
+    prompt = load_binary_system_prompt().lower()
+    assert "kavernom allein ist nicht hämorrhagisch" in prompt
 
 
 def test_subtype_prompt_assumes_hemorrhage_exists():
@@ -154,6 +164,136 @@ def test_parse_subtype_missing_falls_back_unbekannt():
     assert not res.success
     assert res.haemorrhage_subtype == "unbekannt"
     assert res.subtype_uncertain
+
+
+def test_parse_binary_accepts_compact_kurzbegruendung():
+    raw = json.dumps(
+        {
+            "klasse": 0,
+            "label": "nicht_hämorrhagisch",
+            "sicherheit": "hoch",
+            "kurzbegruendung": "Kavernom ohne Blutungsnachweis.",
+        },
+        ensure_ascii=False,
+    )
+    res = parse_binary_response(raw, context="t")
+    assert res.success
+    assert res.prediction["klasse"] == 0
+    assert res.prediction["begruendung"] == "Kavernom ohne Blutungsnachweis."
+    assert res.prediction["evidenz"] == []
+
+
+# --- Cohort filtering --------------------------------------------------------
+
+
+def test_reference_binary_status_mapping():
+    def fields(h="", n="", v=""):
+        return {
+            "reference_haemorrhagisch": h,
+            "reference_nicht_haemorrhagisch": n,
+            "reference_verify_vaskulaer": v,
+        }
+
+    assert reference_binary_status(fields(h="ja")) == "hemorrhagic"
+    assert reference_binary_status(fields(n="ja")) == "non_hemorrhagic"
+    assert reference_binary_status(fields(v="ja")) == "verify_only"
+    assert reference_binary_status(fields(h="ja", n="ja")) == "inconsistent"
+    assert reference_binary_status(fields()) == "unknown"
+
+
+def _cases_with_keys(keys):
+    out = []
+    for pid, opdat in keys:
+        key = CaseKey(pid, opdat, f"F{pid}")
+        reports = {
+            TYPUS_OPERATIONSBERICHT: CaseReport(
+                typus_code=TYPUS_OPERATIONSBERICHT,
+                typus_label="01 Operationsbericht",
+                report_text="text",
+            )
+        }
+        out.append(
+            build_clinical_case(key, reports, expected_typus_codes=EXPECTED_REPORT_TYPUS_CODES)
+        )
+    return out
+
+
+def _lookup(entries):
+    """entries: {(pid,opdat): (h,n,v)}"""
+    return {
+        (pid, opdat): {
+            "reference_haemorrhagisch": h,
+            "reference_nicht_haemorrhagisch": n,
+            "reference_verify_vaskulaer": v,
+        }
+        for (pid, opdat), (h, n, v) in entries.items()
+    }
+
+
+def test_filter_to_cohort_default_keeps_only_binary_labeled():
+    cases = _cases_with_keys([("1", "d"), ("2", "d"), ("3", "d"), ("4", "d"), ("5", "d")])
+    lookup = _lookup(
+        {
+            ("1", "d"): ("ja", "", ""),   # hemorrhagic
+            ("2", "d"): ("", "ja", ""),   # non_hemorrhagic
+            ("3", "d"): ("", "", "ja"),   # verify_only
+            ("4", "d"): ("ja", "ja", ""), # inconsistent
+            ("5", "d"): ("", "", ""),     # unknown
+        }
+    )
+    kept, excluded = _filter_to_cohort(cases, lookup, include_verify_only=False)
+    kept_ids = {c.excel_pid for c in kept}
+    assert kept_ids == {"1", "2"}
+    assert excluded == {"verify_only": 1, "inconsistent": 1, "unknown": 1}
+
+
+def test_filter_to_cohort_include_verify_only():
+    cases = _cases_with_keys([("1", "d"), ("3", "d"), ("5", "d")])
+    lookup = _lookup(
+        {
+            ("1", "d"): ("ja", "", ""),
+            ("3", "d"): ("", "", "ja"),
+            ("5", "d"): ("", "", ""),
+        }
+    )
+    kept, excluded = _filter_to_cohort(cases, lookup, include_verify_only=True)
+    assert {c.excel_pid for c in kept} == {"1", "3"}
+    assert excluded == {"unknown": 1}
+
+
+def test_pipeline_no_reference_processes_all_with_warning(tmp_path: Path):
+    df = pd.DataFrame(
+        [
+            {"excel_pid": "1", "excel_opdat": "2024-01-01", "opber_fallnr": "F1",
+             "typus": "01 Operationsbericht", "diag": "kein Hinweis"},
+        ]
+    )
+    xlsx = tmp_path / "reports.xlsx"
+    df.to_excel(xlsx, index=False)
+    out = tmp_path / "preds.csv"
+    call, _ = _staged_llm(_binary_json(0, "nicht_hämorrhagisch"))
+    result = run_hemorrhage_case_pipeline(reports_path=xlsx, output_path=out, llm_call=call)
+    # No reference available → cohort filter skipped, case still processed.
+    assert result.cases_processed == 1
+    assert "no reference available" in result.cohort_mode
+
+
+def test_pipeline_all_cases_flag_skips_filter(tmp_path: Path):
+    df = pd.DataFrame(
+        [
+            {"excel_pid": "1", "excel_opdat": "2024-01-01", "opber_fallnr": "F1",
+             "typus": "01 Operationsbericht", "diag": "kein Hinweis"},
+        ]
+    )
+    xlsx = tmp_path / "reports.xlsx"
+    df.to_excel(xlsx, index=False)
+    out = tmp_path / "preds.csv"
+    call, _ = _staged_llm(_binary_json(0, "nicht_hämorrhagisch"))
+    result = run_hemorrhage_case_pipeline(
+        reports_path=xlsx, output_path=out, llm_call=call, process_all_cases=True
+    )
+    assert result.cases_processed == 1
+    assert result.cohort_mode == "all_cases"
 
 
 # --- Two-stage flow in process_single_case -----------------------------------

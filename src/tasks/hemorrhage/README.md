@@ -96,17 +96,31 @@ python3 -m src.tasks.hemorrhage.run_case_pipeline [OPTIONS]
 | Option | Role |
 |--------|------|
 | `--dry-run` | Build prompts only; `status=dry_run` |
-| `--limit N` | First N cases |
-| `--case-id ID` | Single case |
+| `--limit N` | First N cases (applied **after** cohort filter) |
+| `--case-id ID` | Single case (bypasses cohort filter) |
 | `--output PATH` | Custom CSV path |
 | `--reports` / `--reference` | Override Excel paths |
+| `--all-cases` | Process ALL cases (disable default cohort filter) |
+| `--include-verify-only` | Add `verify_only` cases to the labeled cohort |
+
+### Inference cohort (default = labeled binary only)
+
+By default the pipeline runs **only on binary-labeled cases** — reference status `hemorrhagic` or `non_hemorrhagic` — for valid evaluation and faster runtime.
+
+- Excluded by default: `verify_only`, `unknown`, `inconsistent` (counts reported in startup + summary as `excluded_by_status`).
+- `--include-verify-only` additionally processes `verify_only` cases.
+- `--all-cases` disables filtering entirely.
+- If **no reference is available**, filtering is skipped (cannot determine status) and all cases are processed with a warning (`cohort_mode="all_cases (no reference available)"`).
+- Reference status is derived from the spreadsheet label cells via `io.reference_lookup.reference_binary_status` (single source of truth, shared with the review/eval `derive_reference_status`).
 
 ### Two-stage hierarchical inference (architecture)
 
 Inference is split into two sequential LLM calls per case to cut token generation and avoid `ReadTimeout`s:
 
-- **Stage 1 — binary** (`prompts/hemorrhage_binary_classification.txt`): decides only `klasse` 0/1 (`nicht_hämorrhagisch` vs `hämorrhagisch`). No subtype.
-- **Stage 2 — subtype** (`prompts/hemorrhage_subtype_classification.txt`): runs **only when `klasse=1`**; decides only `haemorrhage_subtype` ∈ {`historisch`, `nicht_akut`, `akut`}. It assumes the hemorrhage already exists and must not reconsider it.
+- **Stage 1 — binary** (`prompts/hemorrhage_binary_classification.txt`): decides only `klasse` 0/1 (`nicht_hämorrhagisch` vs `hämorrhagisch`). No subtype. **Compact output** — `{klasse, label, sicherheit, kurzbegruendung}`, no evidence list (the parser accepts `kurzbegruendung` as `begruendung`).
+- **Stage 2 — subtype** (`prompts/hemorrhage_subtype_classification.txt`): runs **only when `klasse=1`**; decides only `haemorrhage_subtype` ∈ {`historisch`, `nicht_akut`, `akut`} with `{sicherheit, begruendung, evidenz}` (evidence ≤3 items). It assumes the hemorrhage already exists and must not reconsider it.
+
+**Final binary definition (Stage 1):** `klasse=1` requires explicit/clinically relevant hemorrhage evidence (Blutung/Einblutung/geblutet/hämorrhagisch/Hämatom/Hämatomevakuation/clear bleeding context). The following alone are **not** sufficient for `klasse=1`: Kavernom/CCM, DAVF/AVM/vascular lesion, epilepsy, resection/operation, vascular verification, or a lesion diagnosis without bleeding wording. Historical hemorrhage is still `klasse=1` (subtype decided in Stage 2). **Final subtype definition (Stage 2):** `historisch` = only a previous/historical event; `nicht_akut` = relevant in the current case but not acute; `akut` = acute/fresh/subacute bleeding or acute hemorrhage-related treatment (incl. hematoma evacuation).
 - The runner (`process_single_case`) merges Stage 1 + Stage 2 into one prediction row; the CSV schema is unchanged.
 - Non-hemorrhagic cases terminate after Stage 1, so only positives pay for subtype reasoning (`subtype_stage_status=skipped`).
 - The original combined prompt (`prompts/hemorrhage_case_classification.txt`) and `parse_hemorrhage_response` remain available for single-call use/tests, but the pipeline uses the two-stage path.

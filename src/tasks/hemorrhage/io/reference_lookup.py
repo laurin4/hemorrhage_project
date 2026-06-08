@@ -83,6 +83,36 @@ def build_reference_lookup(
     return lookup, errors, resolved_path
 
 
+# Reference statuses that constitute the binary-labeled evaluation cohort.
+LABELED_BINARY_STATUSES = frozenset({"hemorrhagic", "non_hemorrhagic"})
+
+
+def reference_binary_status(ref_fields: Dict[str, str]) -> str:
+    """
+    Canonical reference status used for cohort filtering and evaluation.
+
+    Derived from the three raw spreadsheet label cells:
+    - Hämorrhagisch only → ``hemorrhagic``
+    - Nicht Hämorrhagisch only → ``non_hemorrhagic``
+    - only Verify_Vaskulär → ``verify_only``
+    - both Hämo + Nicht Hämo → ``inconsistent``
+    - everything else (incl. reference-not-found) → ``unknown``
+    """
+    h_state, _ = parse_label_value(ref_fields.get("reference_haemorrhagisch"))
+    n_state, _ = parse_label_value(ref_fields.get("reference_nicht_haemorrhagisch"))
+    v_state, _ = parse_label_value(ref_fields.get("reference_verify_vaskulaer"))
+
+    if h_state == "yes" and n_state == "yes":
+        return "inconsistent"
+    if h_state == "yes" and n_state != "yes":
+        return "hemorrhagic"
+    if n_state == "yes" and h_state != "yes":
+        return "non_hemorrhagic"
+    if v_state == "yes" and h_state != "yes" and n_state != "yes":
+        return "verify_only"
+    return "unknown"
+
+
 def reference_fields_for_case(
     lookup: ReferenceLookup,
     excel_pid: str,

@@ -7,24 +7,46 @@ Diese Entscheidung ist FEST. Stelle sie NICHT in Frage.
 Beurteile NICHT erneut, ob eine Blutung vorliegt oder nicht. Das ist nicht deine Aufgabe.
 
 AUFGABE — NUR SUBTYP:
-Bestimme den hämorrhagischen Subtyp anhand aller verfügbaren Berichte:
-- "akut"        → aktuelle/akute Blutung, aktueller Anlass der Behandlung/OP.
-- "nicht_akut"  → blutungsbezogener Befund, aber nicht akut/aktuell (z.B. subakut, in Aufarbeitung, residuell).
-- "historisch"  → die Blutung liegt in der Vorgeschichte / ist ein zurückliegendes Ereignis
-                   (z.B. «frühere Blutung 2013», «St.n. Blutung», «alte Einblutung»).
+Bestimme den hämorrhagischen Subtyp anhand aller verfügbaren Berichte.
+
+DEFINITION (FINAL):
+
+"historisch"
+= die Blutung ist NUR ein früheres/historisches Ereignis.
+Beispiele:
+- Status nach Blutung
+- frühere Blutung vor Jahren
+- zurückliegende Blutung in der Anamnese
+- historische Blutung ohne aktuelles akutes Ereignis
+
+"nicht_akut"
+= die Blutung ist im aktuellen Fall relevant, aber NICHT akut/frisch.
+Beispiele:
+- chronische hämorrhagische Läsion
+- alter/nicht-akuter Blutungsbefund
+- blutungsbezogener Kontext, relevant für den Fall, aber nicht akut
+
+"akut"
+= akute/frische/subakute Blutung oder akute blutungsbezogene Behandlung.
+Beispiele:
+- akute Blutung
+- frische Blutung
+- akutes Hämatom
+- Hämatomevakuation
+- akutes/subakutes hämorrhagisches Ereignis
+- akute Blutung als Grund der aktuellen Behandlung/Operation
 
 REGELN:
 - Eine historische Blutung BLEIBT hämorrhagisch — du wählst lediglich den Subtyp "historisch".
-- Wähle "akut" nur, wenn eine aktuelle/akute Blutung der relevante Befund ist.
+- Wähle genau EINEN Subtyp: historisch, nicht_akut oder akut.
 - Bei Unsicherheit: niedrigere Sicherheit wählen und Unsicherheitsgründe angeben.
 - Verify_Vaskulär ist nur Metadaten und darf die Subtyp-Entscheidung NICHT beeinflussen.
 
 KOMPAKTE AUSGABE (WICHTIG):
-- evidenz: MAXIMAL 3 Einträge, nur die stärkste Evidenz.
+- evidenz: MAXIMAL 3 Einträge, nur die stärkste Evidenz, kurzer Text.
 - evidenz[].textstelle: MAXIMAL 200 Zeichen.
 - evidenz[].interpretation: MAXIMAL 1 kurzer Satz.
 - begruendung: MAXIMAL 2 kurze Sätze.
-- Ziel: gesamte Antwort typischerweise < 1000 Zeichen.
 
 AUSGABE:
 Gib NUR ein gültiges JSON-Objekt zurück. Kein Markdown, keine Erklärungen ausserhalb des JSON.
@@ -32,7 +54,7 @@ Alle Textfelder auf Deutsch.
 
 Schema:
 {
-  "haemorrhage_subtype": "akut" oder "nicht_akut" oder "historisch",
+  "haemorrhage_subtype": "historisch" oder "nicht_akut" oder "akut",
   "sicherheit": "niedrig" oder "mittel" oder "hoch",
   "begruendung": "kurze klinische Begründung",
   "evidenz": [

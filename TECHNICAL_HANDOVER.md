@@ -20,11 +20,19 @@ The target is no longer purely binary. The pipeline now produces a two-level lab
 - **Historical hemorrhage is still hemorrhage:** a past/remote bleed is `klasse=1` + `subtype="historisch"`, NEVER `klasse=0`. (`akut` = current acute event; `nicht_akut` = current non-acute finding; `historisch` = past/old, even if acute at the time.)
 - **`Verify_Vaskulär` is metadata only** — never a class. It must not influence classification, and `verify_only` reference cases stay excluded from binary metrics (unless `--include-verify-as-negative`).
 
+### Final clinical working definition + inference cohort
+
+**Binary (Stage 1):** `klasse=1` needs explicit/clinically relevant hemorrhage evidence (Blutung, Einblutung/eingeblutet, geblutet, hämorrhagisch/hemorrhagic, Hämatom/Hematom, Hämatomevakuation, clear bleeding treatment context). Insufficient alone for klasse=1: Kavernom/CCM, DAVF/AVM/vascular lesion, epilepsy, resection/operation, vascular verification, lesion diagnosis without bleeding wording. Historical hemorrhage stays klasse=1.
+
+**Subtype (Stage 2, only if klasse=1):** `historisch` = only a previous/historical event; `nicht_akut` = relevant in the current case but not acute; `akut` = acute/fresh/subacute hemorrhage or acute hemorrhage-related treatment (incl. hematoma evacuation).
+
+**Inference cohort filter** (`inference/runner.py::_filter_to_cohort` + `io/reference_lookup.py::reference_binary_status`): default processes only `hemorrhagic`/`non_hemorrhagic`; excludes `verify_only`/`unknown`/`inconsistent`. CLI flags `--all-cases`, `--include-verify-only`; `--case-id` bypasses; missing reference → filter skipped (process all + warning). `derive_reference_status` in `export/prediction_review.py` now delegates to `reference_binary_status` (single source of truth). Startup + summary print `cohort_mode` and `excluded_by_status`.
+
 ### Two-stage hierarchical inference (current pipeline path)
 
 To reduce per-call token generation and `ReadTimeout`s, the runner issues **two sequential LLM calls** per case instead of one combined call:
 
-- **Stage 1 — binary** (`prompts/hemorrhage_binary_classification.txt`, builders `build_binary_messages` / `build_binary_user_prompt`, parser `parse_binary_response`): decides only `klasse` 0/1; leaves `haemorrhage_subtype = None`.
+- **Stage 1 — binary** (`prompts/hemorrhage_binary_classification.txt`, builders `build_binary_messages` / `build_binary_user_prompt`, parser `parse_binary_response`): decides only `klasse` 0/1; compact JSON `{klasse, label, sicherheit, kurzbegruendung}` (no evidence list; `parse_binary_response` reads `kurzbegruendung` as `begruendung`); leaves `haemorrhage_subtype = None`.
 - **Stage 2 — subtype** (`prompts/hemorrhage_subtype_classification.txt`, builders `build_subtype_messages` / `build_subtype_user_prompt`, parser `parse_subtype_response` → `SubtypeParseResult`): runs **only when `klasse=1`**; decides only the subtype, assuming hemorrhage exists.
 - Merge: `runner._merge_subtype` combines Stage 1 (klasse/label/evidence/reasoning) with Stage 2 (subtype/evidence/reasoning) into one row. CSV schema is unchanged.
 - Failure semantics: Stage 1 LLM error → `status=llm_failed`; Stage 1 parse error → `status=parse_failed` (`parse_failures` CSV uses the binary raw). Stage 2 LLM/parse failure does **not** drop the case → it stays `hämorrhagisch` with `haemorrhage_subtype="unbekannt"` and `subtype_stage_status` ∈ {`llm_failed`, `subtype_unknown`}.

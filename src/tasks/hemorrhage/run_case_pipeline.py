@@ -34,6 +34,16 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Build prompts only; do not call LLM",
     )
+    parser.add_argument(
+        "--all-cases",
+        action="store_true",
+        help="Process ALL cases (disable default binary-labeled cohort filter)",
+    )
+    parser.add_argument(
+        "--include-verify-only",
+        action="store_true",
+        help="Include verify_only cases in addition to the binary-labeled cohort",
+    )
     args = parser.parse_args(argv)
 
     result = run_hemorrhage_case_pipeline(
@@ -43,6 +53,8 @@ def main(argv: list[str] | None = None) -> int:
         limit=args.limit,
         case_id=args.case_id,
         dry_run=args.dry_run,
+        process_all_cases=args.all_cases,
+        include_verify_only=args.include_verify_only,
     )
 
     for line in result.summary_lines:

@@ -523,7 +523,10 @@ def _parse_binary_core(
     out["klasse"] = klasse
     out["label"] = label
     out["sicherheit"] = _normalize_sicherheit(parsed.get("sicherheit"))
-    out["begruendung"] = str(parsed.get("begruendung", "") or "").strip()
+    # Stage 1 (binary) uses compact "kurzbegruendung"; combined/legacy uses "begruendung".
+    out["begruendung"] = str(
+        parsed.get("begruendung") or parsed.get("kurzbegruendung") or ""
+    ).strip()
     out["evidenz"] = _normalize_evidenz(parsed.get("evidenz"))
     out["historische_blutung_erwaehnt"] = _parse_bool_optional(
         parsed.get("historische_blutung_erwaehnt")

@@ -24,14 +24,17 @@ from src.pipeline.paths import (
     HEMORRHAGE_PREDICTION_REVIEW_PATH,
     HEMORRHAGE_PREDICTION_REVIEW_SUMMARY_PATH,
 )
-from src.tasks.hemorrhage.analysis.reference_labels import parse_label_value
 from src.tasks.hemorrhage.constants import (
     TYPUS_AUSTRITTSBERICHT,
     TYPUS_EINTRITTSBERICHT,
     TYPUS_OPERATIONSBERICHT,
 )
 from src.tasks.hemorrhage.io.load_cases import load_clinical_cases
-from src.tasks.hemorrhage.io.reference_lookup import build_reference_lookup, reference_fields_for_case
+from src.tasks.hemorrhage.io.reference_lookup import (
+    build_reference_lookup,
+    reference_binary_status,
+    reference_fields_for_case,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -186,19 +189,13 @@ def derive_reference_status(
     - both Hämo + Nicht Hämo → inconsistent
     - everything else → unknown
     """
-    h_state, _ = parse_label_value(haemorrhagisch_raw)
-    n_state, _ = parse_label_value(nicht_haemorrhagisch_raw)
-    v_state, _ = parse_label_value(verify_vaskulaer_raw)
-
-    if h_state == "yes" and n_state == "yes":
-        return "inconsistent"
-    if h_state == "yes" and n_state != "yes":
-        return "hemorrhagic"
-    if n_state == "yes" and h_state != "yes":
-        return "non_hemorrhagic"
-    if v_state == "yes" and h_state != "yes" and n_state != "yes":
-        return "verify_only"
-    return "unknown"
+    return reference_binary_status(
+        {
+            "reference_haemorrhagisch": haemorrhagisch_raw,
+            "reference_nicht_haemorrhagisch": nicht_haemorrhagisch_raw,
+            "reference_verify_vaskulaer": verify_vaskulaer_raw,
+        }
+    )
 
 
 def _parse_bool_cell(value: object) -> Optional[bool]:

@@ -18,12 +18,23 @@ Classify clinical **cases** from OP / Eintritts / Austritts reports using struct
 - **`Verify_Vaskulär` is metadata/reference only**, NOT a ground-truth class, and is excluded from binary TP/TN/FP/FN by default.
 - **Binary evaluation is unchanged** (historical counts as positive); **subtype analysis is descriptive only** (no validated reference subtype labels yet).
 
+### Final clinical working definition
+
+- **klasse=1 / hämorrhagisch** requires explicit/clinically relevant hemorrhage evidence: Blutung, Einblutung/eingeblutet, geblutet, hämorrhagisch/hemorrhagic, Hämatom/Hematom, Hämatomevakuation, or a clear hemorrhage-related treatment context.
+- **klasse=0 / nicht_hämorrhagisch** = no such evidence. The following alone are **NOT** sufficient for klasse=1: Kavernom/CCM, DAVF/AVM/vascular lesion, epilepsy/seizures, resection/operation, vascular verification, lesion diagnosis without bleeding wording.
+- **Subtype** (only if klasse=1): `historisch` (only a previous/historical event), `nicht_akut` (relevant now but not acute), `akut` (acute/fresh/subacute or acute hemorrhage-related treatment incl. hematoma evacuation).
+- Historical hemorrhage stays klasse=1 + subtype=historisch. `Verify_Vaskulär` is metadata only.
+
+### Inference cohort (default = labeled binary only)
+
+Default runs process **only binary-labeled cases** (reference status `hemorrhagic`/`non_hemorrhagic`) for runtime + valid evaluation. `verify_only` / `unknown` / `inconsistent` are excluded by default. CLI flags: `--all-cases` (process everything), `--include-verify-only` (add verify_only). `--case-id` bypasses the filter; if no reference is available, filtering is skipped and all cases run with a warning. Status is derived by `io.reference_lookup.reference_binary_status`.
+
 ### Inference architecture — two-stage (current)
 
 To reduce token generation and `ReadTimeout`s, each case runs **two sequential LLM calls** instead of one combined call:
 
-- **Stage 1 — binary** (`prompts/hemorrhage_binary_classification.txt`): only `klasse` 0/1. No subtype.
-- **Stage 2 — subtype** (`prompts/hemorrhage_subtype_classification.txt`): only when `klasse=1`; only `haemorrhage_subtype` (historisch/nicht_akut/akut), assuming hemorrhage exists.
+- **Stage 1 — binary** (`prompts/hemorrhage_binary_classification.txt`): only `klasse` 0/1, compact JSON `{klasse, label, sicherheit, kurzbegruendung}` (no evidence list).
+- **Stage 2 — subtype** (`prompts/hemorrhage_subtype_classification.txt`): only when `klasse=1`; only `haemorrhage_subtype` (historisch/nicht_akut/akut) with `{sicherheit, begruendung, evidenz}` (≤3 items), assuming hemorrhage exists.
 - The runner merges both stages into one row; CSV schema unchanged. Non-hemorrhagic cases skip Stage 2 (`subtype_stage_status=skipped`).
 - New columns: `binary_stage_status`, `subtype_stage_status`, `binary_prompt_length`, `subtype_prompt_length`.
 - The old combined prompt (`prompts/hemorrhage_case_classification.txt`) + `parse_hemorrhage_response` are kept for single-call/testing but are no longer the pipeline path.
@@ -91,10 +102,14 @@ python3 -m src.tasks.hemorrhage.analyze_reference_labels
 python3 -m src.tasks.hemorrhage.run_case_pipeline --dry-run --limit 5
 
 # 5. Limited LLM pilot (recommended before the full run)
-python3 -m src.tasks.hemorrhage.run_case_pipeline --limit 20
+#    Default = binary-labeled cohort only (verify_only/unknown/inconsistent excluded)
+python3 -m src.tasks.hemorrhage.run_case_pipeline --limit 10
 
 # 6. Full case inference (one row per case, written incrementally)
 python3 -m src.tasks.hemorrhage.run_case_pipeline
+#    Cohort variants:
+python3 -m src.tasks.hemorrhage.run_case_pipeline --include-verify-only
+python3 -m src.tasks.hemorrhage.run_case_pipeline --all-cases
 
 # 7. Build review exports (also writes FN/FP detailed reviews + confusion review)
 python3 -m src.tasks.hemorrhage.build_prediction_review
@@ -111,8 +126,9 @@ head -20 data/outputs/hemorrhage_confusion_review.csv
 ls -lh data/evaluation/plots/
 ```
 
-`--limit N` (first N cases), `--case-id ID` (single case), `--dry-run` (no LLM) and
-`--output PATH` are available on `run_case_pipeline`.
+`--limit N` (first N cases, applied after cohort filter), `--case-id ID` (single case, bypasses
+cohort filter), `--dry-run` (no LLM), `--output PATH`, `--all-cases` (process all), and
+`--include-verify-only` (add verify_only cases) are available on `run_case_pipeline`.
 
 Expected outputs:
 

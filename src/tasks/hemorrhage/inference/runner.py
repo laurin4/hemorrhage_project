@@ -21,8 +21,10 @@ from src.tasks.hemorrhage.constants import (
 )
 from src.tasks.hemorrhage.io.load_cases import load_clinical_cases
 from src.tasks.hemorrhage.io.reference_lookup import (
+    LABELED_BINARY_STATUSES,
     ReferenceLookup,
     build_reference_lookup,
+    reference_binary_status,
     reference_fields_for_case,
     resolve_reference_path,
 )
@@ -101,8 +103,41 @@ class CasePipelineResult:
     dry_run_count: int = 0
     llm_failed_count: int = 0
     parse_failed_count: int = 0
+    cohort_mode: str = "labeled_binary"
+    cases_excluded: int = 0
+    excluded_by_status: Dict[str, int] = field(default_factory=dict)
     summary_lines: List[str] = field(default_factory=list)
     errors: List[str] = field(default_factory=list)
+
+
+def _filter_to_cohort(
+    cases: Sequence[ClinicalCase],
+    ref_lookup: ReferenceLookup,
+    *,
+    include_verify_only: bool,
+) -> "tuple[List[ClinicalCase], Dict[str, int]]":
+    """
+    Restrict cases to the binary-labeled evaluation cohort.
+
+    Keeps only reference statuses ``hemorrhagic`` / ``non_hemorrhagic``. With
+    ``include_verify_only`` also keep ``verify_only``. ``verify_only`` /
+    ``unknown`` / ``inconsistent`` are excluded otherwise. Returns
+    (kept_cases, excluded_status_counts).
+    """
+    allowed = set(LABELED_BINARY_STATUSES)
+    if include_verify_only:
+        allowed.add("verify_only")
+
+    kept: List[ClinicalCase] = []
+    excluded: Dict[str, int] = {}
+    for case in cases:
+        ref = reference_fields_for_case(ref_lookup, case.excel_pid, case.excel_opdat)
+        status = reference_binary_status(ref)
+        if status in allowed:
+            kept.append(case)
+        else:
+            excluded[status] = excluded.get(status, 0) + 1
+    return kept, excluded
 
 
 def _pipe_join(values: Sequence[str]) -> str:
@@ -409,10 +444,17 @@ def run_hemorrhage_case_pipeline(
     case_id: Optional[str] = None,
     dry_run: bool = False,
     llm_call: Optional[Callable[[list], str]] = None,
+    process_all_cases: bool = False,
+    include_verify_only: bool = False,
 ) -> CasePipelineResult:
     out_path = output_path or HEMORRHAGE_CASE_PREDICTIONS_PATH
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    result = CasePipelineResult(output_path=out_path)
+    cohort_mode = (
+        "all_cases"
+        if process_all_cases
+        else ("labeled_binary+verify_only" if include_verify_only else "labeled_binary")
+    )
+    result = CasePipelineResult(output_path=out_path, cohort_mode=cohort_mode)
 
     cases, stats, reports_file, load_errors = load_clinical_cases(reports_path)
     result.errors.extend(load_errors)
@@ -447,6 +489,27 @@ def run_hemorrhage_case_pipeline(
             result.errors.append(f"case_id_not_found: {case_id}")
             result.summary_lines = [f"Case {case_id!r} not found among {len(cases)} cases."]
             return result
+
+    # Cohort filtering: default to the binary-labeled cohort only. Skipped for an
+    # explicit --case-id, when --all-cases is set, or when no reference labels are
+    # available (cannot determine status → process all, with a warning).
+    cohort_filtered = False
+    if not process_all_cases and case_id is None:
+        if ref_lookup:
+            work, excluded = _filter_to_cohort(
+                work,
+                ref_lookup,
+                include_verify_only=include_verify_only,
+            )
+            result.excluded_by_status = excluded
+            result.cases_excluded = sum(excluded.values())
+            cohort_filtered = True
+        else:
+            result.cohort_mode = "all_cases (no reference available)"
+            result.errors.append(
+                "cohort_filter_skipped: reference labels unavailable; processing all cases"
+            )
+
     if limit is not None and limit > 0:
         work = work[:limit]
 
@@ -464,6 +527,14 @@ def run_hemorrhage_case_pipeline(
     print(f"  reports_path={reports_file}")
     print(f"  reference_path={ref_resolved_path} ({ref_status})")
     print(f"  cases_loaded={len(cases)}")
+    print(f"  cohort_mode={result.cohort_mode}")
+    if cohort_filtered:
+        print(f"  cases_excluded_by_cohort={result.cases_excluded}")
+        if result.excluded_by_status:
+            breakdown = ", ".join(
+                f"{k}={v}" for k, v in sorted(result.excluded_by_status.items())
+            )
+            print(f"    excluded_by_status: {breakdown}")
     print(f"  cases_to_process={len(work)}")
     print(f"  output_path={out_path}")
     print(f"  dry_run={dry_run}")
@@ -507,10 +578,18 @@ def run_hemorrhage_case_pipeline(
     write_parse_failures_csv(rows, HEMORRHAGE_PARSE_FAILURES_PATH)
     result.cases_processed = len(rows)
 
+    cohort_summary = f"cohort_mode={result.cohort_mode}"
+    if result.cases_excluded:
+        breakdown = ", ".join(
+            f"{k}={v}" for k, v in sorted(result.excluded_by_status.items())
+        )
+        cohort_summary += f" (excluded={result.cases_excluded}: {breakdown})"
+
     result.summary_lines = [
         "Hemorrhage case pipeline (prototype)",
         f"reports_file={reports_file}",
         f"cases_total_loaded={len(cases)}",
+        cohort_summary,
         f"cases_processed={result.cases_processed}",
         f"dry_run={dry_run}",
         "--- run summary ---",
