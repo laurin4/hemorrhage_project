@@ -135,6 +135,52 @@ def test_subtype_prompt_assumes_hemorrhage_exists():
     assert "stelle" in lowered  # "Stelle das NICHT in Frage."
 
 
+def test_subtype_prompt_separates_historisch_from_not_acute():
+    """'historisch' must NOT simply mean 'not acute' — relevance is the key."""
+    lowered = load_subtype_system_prompt().lower()
+    assert "bedeutet nicht einfach" in lowered
+    assert "klinische relevanz" in lowered or "klinisch relevant" in lowered
+
+
+def test_subtype_prompt_has_explicit_decision_rule():
+    """Background-only → historisch; acute → akut; else → nicht_akut."""
+    lowered = load_subtype_system_prompt().lower()
+    assert "entscheidungsregel" in lowered
+    assert "hintergrund-anamnese" in lowered
+    # Ordered fallback to nicht_akut when not background and not acute.
+    assert "nein" in lowered and "nicht_akut" in lowered
+
+
+def test_subtype_prompt_older_but_relevant_maps_to_nicht_akut():
+    """A bleed that is older but explains current symptoms/surgery → nicht_akut, not historisch."""
+    prompt = load_subtype_system_prompt()
+    lowered = prompt.lower()
+    assert "eingeblutetes kavernom" in lowered
+    assert "hämosiderin" in lowered
+    # Explicit instruction that older-but-relevant is nicht_akut (not historisch).
+    assert 'NICHT "historisch"' in prompt
+    assert '"nicht_akut"' in prompt
+
+
+# Behaviour expectations (subtype string → canonical normalization). The mapping
+# from clinical text to subtype is the model's job; here we lock the canonical
+# parsing for the labels the prompt is expected to emit for each scenario.
+def test_subtype_parsing_for_documented_scenarios():
+    scenarios = {
+        # "St.n. Blutung 2010, unrelated to current surgery" → historisch
+        "historisch": "historisch",
+        # "eingeblutetes Kavernom caused current symptoms ... resection weeks later" → nicht_akut
+        # "hemosiderin around current lesion relevant for treatment" → nicht_akut
+        "nicht_akut": "nicht_akut",
+        # "acute subdural hematoma with emergency evacuation" → akut
+        "akut": "akut",
+    }
+    for expected, emitted in scenarios.items():
+        res = parse_subtype_response(_subtype_json(emitted), context="t")
+        assert res.success
+        assert res.haemorrhage_subtype == expected
+
+
 def test_build_stage_messages_distinct():
     case = _case("[Diagnosen]\nStatus nach Blutung 1998")
     b = build_binary_messages(case)

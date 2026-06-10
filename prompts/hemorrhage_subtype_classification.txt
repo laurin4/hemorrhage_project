@@ -9,35 +9,54 @@ Beurteile NICHT erneut, ob eine Blutung vorliegt oder nicht. Das ist nicht deine
 AUFGABE — NUR SUBTYP:
 Bestimme den hämorrhagischen Subtyp anhand aller verfügbaren Berichte.
 
+ZENTRALE UNTERSCHEIDUNG (WICHTIG):
+"historisch" bedeutet NICHT einfach "nicht akut".
+Der entscheidende Unterschied zwischen "historisch" und "nicht_akut" ist die KLINISCHE RELEVANZ
+für den aktuellen Fall (aktuelle Symptome, Operation, Diagnose, Behandlung):
+- KEINE aktuelle Relevanz (nur Hintergrund-Anamnese) → "historisch"
+- AKTUELLE Relevanz, aber nicht frisch/akut → "nicht_akut"
+
 DEFINITION (FINAL):
 
-"historisch"
-= die Blutung ist NUR ein früheres/historisches Ereignis.
+1. "historisch"
+Nur verwenden, wenn die Blutung als zurückliegende Anamnese erwähnt wird UND KEINE klare Relevanz
+für die aktuellen Symptome, die Operation, die Diagnose oder die Behandlung hat.
 Beispiele:
-- Status nach Blutung
-- frühere Blutung vor Jahren
-- zurückliegende Blutung in der Anamnese
-- historische Blutung ohne aktuelles akutes Ereignis
+- Status nach Blutung vor vielen Jahren, ohne Bezug zum aktuellen Fall
+- alte Blutung nur als Hintergrund-Anamnese
+- frühere Blutungsepisode erwähnt, aber NICHT handlungsleitend für das aktuelle Management
 
-"nicht_akut"
-= die Blutung ist im aktuellen Fall relevant, aber NICHT akut/frisch.
+2. "nicht_akut"
+Verwenden, wenn die Blutung nicht frisch/akut ist, aber für den aktuellen Fall KLINISCH RELEVANT ist.
 Beispiele:
-- chronische hämorrhagische Läsion
-- alter/nicht-akuter Blutungsbefund
-- blutungsbezogener Kontext, relevant für den Fall, aber nicht akut
+- eingeblutetes Kavernom, das die aktuellen Symptome verursacht hat
+- frühere/subakute Blutung, die zur aktuellen Operation geführt hat
+- chronische hämorrhagische Läsion, die aktuell behandelt wird
+- Hämosiderin / alte Blutabbauprodukte, relevant für die aktuelle Läsion
+- Operation geplant wegen einer früheren, aber klinisch relevanten Blutung
+WICHTIG: Wenn die Blutung älter ist, aber die aktuellen Symptome ODER die aktuelle Operation erklärt,
+dann ist haemorrhage_subtype = "nicht_akut" — NICHT "historisch".
 
-"akut"
-= akute/frische/subakute Blutung oder akute blutungsbezogene Behandlung.
+3. "akut"
+Nur verwenden bei akuter/frischer/subakuter Blutung oder dringender akuter blutungsbezogener Behandlung.
 Beispiele:
 - akute Blutung
 - frische Blutung
 - akutes Hämatom
+- notfallmässige Operation
 - Hämatomevakuation
-- akutes/subakutes hämorrhagisches Ereignis
-- akute Blutung als Grund der aktuellen Behandlung/Operation
+- akute neurologische Verschlechterung aufgrund einer Blutung
+
+EXPLIZITE ENTSCHEIDUNGSREGEL (in dieser Reihenfolge):
+1. Ist die Blutung NUR Hintergrund-Anamnese ohne aktuelle Relevanz?
+   - ja → "historisch"
+   - nein → weiter zu Frage 2
+2. Gibt es eine akute/frische/dringende Blutung?
+   - ja → "akut"
+   - nein → "nicht_akut"
 
 REGELN:
-- Eine historische Blutung BLEIBT hämorrhagisch — du wählst lediglich den Subtyp "historisch".
+- Eine Blutung bleibt hämorrhagisch — du wählst lediglich den Subtyp.
 - Wähle genau EINEN Subtyp: historisch, nicht_akut oder akut.
 - Bei Unsicherheit: niedrigere Sicherheit wählen und Unsicherheitsgründe angeben.
 - Verify_Vaskulär ist nur Metadaten und darf die Subtyp-Entscheidung NICHT beeinflussen.

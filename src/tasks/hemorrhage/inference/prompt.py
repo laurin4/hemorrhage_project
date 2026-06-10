@@ -176,7 +176,11 @@ Antworte ausschliesslich mit einem JSON-Objekt auf Deutsch, ohne Markdown.
 _FALLBACK_SUBTYPE_SYSTEM_PROMPT = """Du bist ein klinisches Entscheidungssystem für EINE Entscheidung: den hämorrhagischen Subtyp.
 Es ist bereits bestätigt, dass der Fall HÄMORRHAGISCH ist (klasse=1). Stelle das NICHT in Frage.
 Wähle NUR den Subtyp: historisch, nicht_akut oder akut.
-Eine historische Blutung bleibt hämorrhagisch → Subtyp=historisch.
+«historisch» bedeutet NICHT einfach «nicht akut». Entscheidend ist die aktuelle klinische Relevanz:
+- historisch = NUR Hintergrund-Anamnese, KEINE Relevanz für aktuelle Symptome/Operation/Diagnose/Behandlung.
+- nicht_akut = nicht frisch/akut, ABER aktuell klinisch relevant (z.B. eingeblutetes Kavernom verursacht aktuelle Symptome, frühere Blutung führte zur OP, Hämosiderin relevant für aktuelle Läsion).
+- akut = akute/frische/subakute Blutung oder dringende akute blutungsbezogene Behandlung (z.B. Hämatomevakuation, Notfall-OP).
+Entscheidungsregel: (1) nur Hintergrund-Anamnese ohne aktuelle Relevanz? ja→historisch, sonst→ (2) akute/frische/dringende Blutung? ja→akut, nein→nicht_akut.
 Antwort kompakt: max. 3 evidenz-Einträge, begruendung max. 2 Sätze.
 Antworte ausschliesslich mit einem JSON-Objekt auf Deutsch, ohne Markdown.
 """
@@ -192,8 +196,10 @@ _BINARY_USER_PROMPT_REMINDER = """Erinnerung (NUR Stufe 1 — binär):
 _SUBTYPE_USER_PROMPT_REMINDER = """Erinnerung (NUR Stufe 2 — Subtyp):
 - Die Blutung ist bereits bestätigt. Beurteile NICHT erneut hämorrhagisch vs. nicht_hämorrhagisch.
 - Wähle genau einen Subtyp: historisch, nicht_akut oder akut.
-- historisch = Blutung in der Vorgeschichte / zurückliegendes Ereignis (z.B. St.n. Blutung, frühere Einblutung).
-- akut = aktuelle/akute Blutung als relevanter Befund.
-- nicht_akut = blutungsbezogen, aber nicht akut/aktuell (subakut, residuell, in Aufarbeitung).
+- «historisch» bedeutet NICHT einfach «nicht akut» — entscheidend ist die aktuelle klinische Relevanz.
+- historisch = NUR Hintergrund-Anamnese ohne Relevanz für aktuelle Symptome/Operation/Diagnose/Behandlung.
+- nicht_akut = nicht frisch/akut, ABER aktuell klinisch relevant (z.B. eingeblutetes Kavernom verursacht aktuelle Symptome, frühere Blutung führte zur OP, Hämosiderin relevant für aktuelle Läsion).
+- akut = akute/frische/subakute Blutung oder dringende Behandlung (Hämatomevakuation, Notfall-OP).
+- Entscheidungsregel: (1) nur Hintergrund-Anamnese ohne aktuelle Relevanz? ja→historisch, sonst→ (2) akute/frische/dringende Blutung? ja→akut, nein→nicht_akut.
 - Verify_Vaskulär darf die Subtyp-Entscheidung nicht beeinflussen.
 - Antwort kompakt, nur gültiges JSON."""
