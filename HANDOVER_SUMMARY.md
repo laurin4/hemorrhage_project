@@ -138,6 +138,9 @@ Expected outputs:
 - `data/outputs/hemorrhage_prediction_review.csv` — unified qualitative review table (incl. `predicted_haemorrhage_subtype`)
 - `data/outputs/hemorrhage_confusion_review.csv` — compact TP/TN/FP/FN review
 - `data/outputs/hemorrhage_false_negative_review.csv` / `hemorrhage_false_positive_review.csv` — detailed FN/FP reviews
+- `data/outputs/hemorrhage_clinically_relevant_cases.csv` — hemorrhagic predictions with subtype ≠ historisch (akut/nicht_akut), full review columns + `final_target_label`
+- `data/outputs/hemorrhage_historical_cases.csv` — hemorrhagic predictions with subtype = historisch, full review columns + `final_target_label`
+- `data/outputs/hemorrhage_final_target_summary.csv` — counts: total_processed_cases, clinically_relevant_hemorrhage, historical_hemorrhage, non_hemorrhagic, prediction_missing, parse_failed, llm_failed (clinically_relevant + historical = all hemorrhagic predictions)
 - `data/outputs/hemorrhage_prediction_review_summary.txt` — review summary
 - `data/evaluation/hemorrhage_metrics_summary.csv` / `.txt` / `.md` — metrics (raw + readable reports)
 - `data/evaluation/hemorrhage_confusion_matrix.csv`, `hemorrhage_error_cases.csv`

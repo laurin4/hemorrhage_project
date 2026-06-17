@@ -280,6 +280,16 @@ HEMORRHAGE_FALSE_NEGATIVE_REVIEW_PATH = (
 HEMORRHAGE_FALSE_POSITIVE_REVIEW_PATH = (
     DATA_OUTPUTS_DIR / "hemorrhage_false_positive_review.csv"
 )
+# Final-target review exports (split of hemorrhagic predictions by clinical relevance)
+HEMORRHAGE_CLINICALLY_RELEVANT_CASES_PATH = (
+    DATA_OUTPUTS_DIR / "hemorrhage_clinically_relevant_cases.csv"
+)
+HEMORRHAGE_HISTORICAL_CASES_PATH = (
+    DATA_OUTPUTS_DIR / "hemorrhage_historical_cases.csv"
+)
+HEMORRHAGE_FINAL_TARGET_SUMMARY_PATH = (
+    DATA_OUTPUTS_DIR / "hemorrhage_final_target_summary.csv"
+)
 
 # Hemorrhage preliminary evaluation (labeled subset)
 HEMORRHAGE_EVALUATION_DIR = DATA_DIR / "evaluation"

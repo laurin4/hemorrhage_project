@@ -18,9 +18,12 @@ import pandas as pd
 from src.core.case.models import ClinicalCase
 from src.pipeline.paths import (
     HEMORRHAGE_CASE_PREDICTIONS_PATH,
+    HEMORRHAGE_CLINICALLY_RELEVANT_CASES_PATH,
     HEMORRHAGE_CONFUSION_REVIEW_PATH,
     HEMORRHAGE_FALSE_NEGATIVE_REVIEW_PATH,
     HEMORRHAGE_FALSE_POSITIVE_REVIEW_PATH,
+    HEMORRHAGE_FINAL_TARGET_SUMMARY_PATH,
+    HEMORRHAGE_HISTORICAL_CASES_PATH,
     HEMORRHAGE_PREDICTION_REVIEW_PATH,
     HEMORRHAGE_PREDICTION_REVIEW_SUMMARY_PATH,
 )
@@ -151,6 +154,30 @@ CONFUSION_SORT_ORDER: Dict[str, int] = {
     "TN": 5,
 }
 
+# Final clinical target labels (derived from binary label + predicted subtype).
+FINAL_TARGET_CLINICALLY_RELEVANT = "clinically_relevant_hemorrhage"
+FINAL_TARGET_HISTORICAL = "historical_hemorrhage"
+FINAL_TARGET_NON_HEMORRHAGIC = "non_hemorrhagic"
+FINAL_TARGET_PREDICTION_MISSING = "prediction_missing"
+FINAL_TARGET_PARSE_FAILED = "parse_failed"
+FINAL_TARGET_LLM_FAILED = "llm_failed"
+
+# Order used in the final-target summary CSV.
+FINAL_TARGET_SUMMARY_METRICS: List[str] = [
+    "total_processed_cases",
+    FINAL_TARGET_CLINICALLY_RELEVANT,
+    FINAL_TARGET_HISTORICAL,
+    FINAL_TARGET_NON_HEMORRHAGIC,
+    FINAL_TARGET_PREDICTION_MISSING,
+    FINAL_TARGET_PARSE_FAILED,
+    FINAL_TARGET_LLM_FAILED,
+]
+
+FINAL_TARGET_SUMMARY_COLUMNS: List[str] = ["metric", "count"]
+
+# Full review columns + the derived final_target_label, for the split exports.
+FINAL_TARGET_REVIEW_COLUMNS: List[str] = REVIEW_CSV_COLUMNS + ["final_target_label"]
+
 
 @dataclass
 class PredictionReviewResult:
@@ -159,9 +186,15 @@ class PredictionReviewResult:
     summary_path: Path
     false_negative_path: Path
     false_positive_path: Path
+    clinically_relevant_path: Optional[Path] = None
+    historical_path: Optional[Path] = None
+    final_target_summary_path: Optional[Path] = None
     rows_written: int = 0
     fn_count: int = 0
     fp_count: int = 0
+    clinically_relevant_count: int = 0
+    historical_count: int = 0
+    final_target_counts: Dict[str, int] = field(default_factory=dict)
     summary_lines: List[str] = field(default_factory=list)
     errors: List[str] = field(default_factory=list)
 
@@ -583,6 +616,96 @@ def write_error_review_exports(
     return len(fn_rows), len(fp_rows)
 
 
+def derive_final_target_label(review_row: Dict[str, Any]) -> str:
+    """
+    Map a review row to its final clinical target label.
+
+    Priority: pipeline failures first, then the binary label, then (for
+    hemorrhagic) the predicted subtype. Every row maps to exactly one label, so
+    the six categories partition all processed cases.
+    """
+    status = str(review_row.get("status", "") or "").strip().lower()
+    if status == "llm_failed":
+        return FINAL_TARGET_LLM_FAILED
+    if status == "parse_failed":
+        return FINAL_TARGET_PARSE_FAILED
+
+    label = str(review_row.get("label", "") or "").strip().lower()
+    subtype = str(review_row.get("predicted_haemorrhage_subtype", "") or "").strip().lower()
+
+    if label == "hämorrhagisch":
+        if subtype == "historisch":
+            return FINAL_TARGET_HISTORICAL
+        return FINAL_TARGET_CLINICALLY_RELEVANT
+    if label == "nicht_hämorrhagisch":
+        return FINAL_TARGET_NON_HEMORRHAGIC
+    return FINAL_TARGET_PREDICTION_MISSING
+
+
+def _final_target_review_row(review_row: Dict[str, Any], target_label: str) -> Dict[str, Any]:
+    out = {col: review_row.get(col, "") for col in REVIEW_CSV_COLUMNS}
+    out["final_target_label"] = target_label
+    return out
+
+
+def write_final_target_exports(
+    review_rows: Sequence[Dict[str, Any]],
+    *,
+    clinically_relevant_path: Path,
+    historical_path: Path,
+) -> Tuple[int, int]:
+    """
+    Split hemorrhagic predictions into two manual-review CSVs.
+
+    - clinically relevant: label == hämorrhagisch AND subtype != historisch
+    - historical:          label == hämorrhagisch AND subtype == historisch
+
+    Together these cover every hemorrhagic prediction exactly once. Returns
+    (clinically_relevant_count, historical_count).
+    """
+    relevant_rows: List[Dict[str, Any]] = []
+    historical_rows: List[Dict[str, Any]] = []
+    for review_row in review_rows:
+        target = derive_final_target_label(review_row)
+        if target == FINAL_TARGET_CLINICALLY_RELEVANT:
+            relevant_rows.append(_final_target_review_row(review_row, target))
+        elif target == FINAL_TARGET_HISTORICAL:
+            historical_rows.append(_final_target_review_row(review_row, target))
+
+    clinically_relevant_path.parent.mkdir(parents=True, exist_ok=True)
+    historical_path.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(relevant_rows, columns=FINAL_TARGET_REVIEW_COLUMNS).to_csv(
+        clinically_relevant_path, index=False, encoding="utf-8"
+    )
+    pd.DataFrame(historical_rows, columns=FINAL_TARGET_REVIEW_COLUMNS).to_csv(
+        historical_path, index=False, encoding="utf-8"
+    )
+    return len(relevant_rows), len(historical_rows)
+
+
+def compute_final_target_counts(review_rows: Sequence[Dict[str, Any]]) -> Dict[str, int]:
+    """Counts per final target label (+ total_processed_cases)."""
+    counts: Dict[str, int] = {m: 0 for m in FINAL_TARGET_SUMMARY_METRICS}
+    counts["total_processed_cases"] = len(review_rows)
+    for review_row in review_rows:
+        counts[derive_final_target_label(review_row)] += 1
+    return counts
+
+
+def write_final_target_summary(
+    review_rows: Sequence[Dict[str, Any]],
+    summary_path: Path,
+) -> Dict[str, int]:
+    """Write hemorrhage_final_target_summary.csv (metric,count) and return counts."""
+    counts = compute_final_target_counts(review_rows)
+    summary_path.parent.mkdir(parents=True, exist_ok=True)
+    rows = [{"metric": m, "count": counts[m]} for m in FINAL_TARGET_SUMMARY_METRICS]
+    pd.DataFrame(rows, columns=FINAL_TARGET_SUMMARY_COLUMNS).to_csv(
+        summary_path, index=False, encoding="utf-8"
+    )
+    return counts
+
+
 def build_prediction_review_summary(
     review_rows: Sequence[Dict[str, Any]],
     *,
@@ -665,6 +788,9 @@ def run_build_prediction_review(
     only_fp: bool = False,
     false_negative_path: Optional[Path] = None,
     false_positive_path: Optional[Path] = None,
+    clinically_relevant_path: Optional[Path] = None,
+    historical_path: Optional[Path] = None,
+    final_target_summary_path: Optional[Path] = None,
     skip_main_exports: bool = False,
 ) -> PredictionReviewResult:
     pred_path = predictions_path or HEMORRHAGE_CASE_PREDICTIONS_PATH
@@ -673,12 +799,18 @@ def run_build_prediction_review(
     sum_path = summary_path or HEMORRHAGE_PREDICTION_REVIEW_SUMMARY_PATH
     fn_path = false_negative_path or HEMORRHAGE_FALSE_NEGATIVE_REVIEW_PATH
     fp_path = false_positive_path or HEMORRHAGE_FALSE_POSITIVE_REVIEW_PATH
+    relevant_path = clinically_relevant_path or HEMORRHAGE_CLINICALLY_RELEVANT_CASES_PATH
+    hist_path = historical_path or HEMORRHAGE_HISTORICAL_CASES_PATH
+    target_sum_path = final_target_summary_path or HEMORRHAGE_FINAL_TARGET_SUMMARY_PATH
     result = PredictionReviewResult(
         review_path=out_path,
         confusion_path=conf_path,
         summary_path=sum_path,
         false_negative_path=fn_path,
         false_positive_path=fp_path,
+        clinically_relevant_path=relevant_path,
+        historical_path=hist_path,
+        final_target_summary_path=target_sum_path,
     )
 
     if not pred_path.exists():
@@ -704,6 +836,20 @@ def run_build_prediction_review(
         review_rows.append(
             build_review_row(row, ref_lookup=ref_lookup, case_by_id=case_by_id)
         )
+
+    # Final-target exports operate on ALL processed predictions, independent of
+    # the label/mismatch filters below (every hemorrhagic prediction must appear
+    # in exactly one of the clinically-relevant / historical CSVs).
+    full_review_rows = list(review_rows)
+    clinically_relevant_count, historical_count = write_final_target_exports(
+        full_review_rows,
+        clinically_relevant_path=relevant_path,
+        historical_path=hist_path,
+    )
+    final_target_counts = write_final_target_summary(full_review_rows, target_sum_path)
+    result.clinically_relevant_count = clinically_relevant_count
+    result.historical_count = historical_count
+    result.final_target_counts = final_target_counts
 
     if only_labeled:
         review_rows = [
@@ -768,12 +914,30 @@ def run_build_prediction_review(
         fp_count=fp_count,
     )
     sum_path.write_text("\n".join(summary_lines) + "\n", encoding="utf-8")
+
+    counts = result.final_target_counts
+    hemorrhagic_total = clinically_relevant_count + historical_count
     result.summary_lines = summary_lines + [
+        "",
+        "--- final target summary ---",
+        f"total_processed_cases={counts.get('total_processed_cases', 0)}",
+        f"clinically_relevant_hemorrhage={counts.get(FINAL_TARGET_CLINICALLY_RELEVANT, 0)}",
+        f"historical_hemorrhage={counts.get(FINAL_TARGET_HISTORICAL, 0)}",
+        f"non_hemorrhagic={counts.get(FINAL_TARGET_NON_HEMORRHAGIC, 0)}",
+        f"prediction_missing={counts.get(FINAL_TARGET_PREDICTION_MISSING, 0)}",
+        f"parse_failed={counts.get(FINAL_TARGET_PARSE_FAILED, 0)}",
+        f"llm_failed={counts.get(FINAL_TARGET_LLM_FAILED, 0)}",
+        f"hemorrhagic_predictions_total={hemorrhagic_total} "
+        f"(clinically_relevant={clinically_relevant_count} + historical={historical_count})",
+        "----------------------------",
         "",
         f"review_csv={out_path}",
         f"confusion_csv={conf_path}",
         f"false_negative_review_csv={fn_path}",
         f"false_positive_review_csv={fp_path}",
+        f"clinically_relevant_cases_csv={relevant_path}",
+        f"historical_cases_csv={hist_path}",
+        f"final_target_summary_csv={target_sum_path}",
         f"summary_txt={sum_path}",
         f"rows_written={result.rows_written}",
         f"FN_export_rows={fn_count}",

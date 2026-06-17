@@ -46,10 +46,19 @@ Preliminary comparison only — **not final evaluation**.
 - `data/outputs/hemorrhage_false_negative_review.csv` — all FN cases, full detail
 - `data/outputs/hemorrhage_false_positive_review.csv` — all FP cases, full detail
 
+**Final-target exports** (split of all hemorrhagic predictions by clinical relevance, for manual clinical review):
+
+- `data/outputs/hemorrhage_clinically_relevant_cases.csv` — `label==hämorrhagisch` AND `predicted_haemorrhage_subtype != historisch` (akut/nicht_akut)
+- `data/outputs/hemorrhage_historical_cases.csv` — `label==hämorrhagisch` AND `predicted_haemorrhage_subtype == historisch`
+- `data/outputs/hemorrhage_final_target_summary.csv` — counts (`metric,count`): `total_processed_cases`, `clinically_relevant_hemorrhage`, `historical_hemorrhage`, `non_hemorrhagic`, `prediction_missing`, `parse_failed`, `llm_failed`
+
+Both split exports carry the **full review columns plus `final_target_label`**. Invariant: `clinically_relevant + historical = all hemorrhagic predictions` (every hemorrhagic prediction appears in exactly one export). The split is computed over **all** predictions, independent of `--only-labeled` / `--only-mismatches` filters.
+
 ```bash
 wc -l data/outputs/hemorrhage_false_negative_review.csv
 wc -l data/outputs/hemorrhage_false_positive_review.csv
-head -5 data/outputs/hemorrhage_false_negative_review.csv
+cat data/outputs/hemorrhage_final_target_summary.csv
+head -5 data/outputs/hemorrhage_historical_cases.csv
 ```
 
 Summary: `data/outputs/hemorrhage_prediction_review_summary.txt`
