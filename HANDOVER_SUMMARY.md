@@ -25,9 +25,13 @@ Classify clinical **cases** from OP / Eintritts / Austritts reports using struct
 - **Subtype** (only if klasse=1): `historisch` (only a previous/historical event), `nicht_akut` (relevant now but not acute), `akut` (acute/fresh/subacute or acute hemorrhage-related treatment incl. hematoma evacuation).
 - Historical hemorrhage stays klasse=1 + subtype=historisch. `Verify_Vaskulär` is metadata only.
 
-### Inference cohort (default = labeled binary only)
+### Inference cohort (default = ALL patients)
 
-Default runs process **only binary-labeled cases** (reference status `hemorrhagic`/`non_hemorrhagic`) for runtime + valid evaluation. `verify_only` / `unknown` / `inconsistent` are excluded by default. CLI flags: `--all-cases` (process everything), `--include-verify-only` (add verify_only). `--case-id` bypasses the filter; if no reference is available, filtering is skipped and all cases run with a warning. Status is derived by `io.reference_lookup.reference_binary_status`.
+Default runs now classify **every patient** (incl. `verify_only` / Verify_Vaskulär, `unknown`, unlabeled) through the same two-stage structure; unlabeled cases just have no TP/TN/FP/FN. CLI flag `--labeled-only` restricts to the binary-labeled evaluation cohort (`hemorrhagic`/`non_hemorrhagic`) for valid evaluation + faster runtime; with it, `--include-verify-only` also adds `verify_only`. `--case-id` bypasses the filter. Status is derived by `io.reference_lookup.reference_binary_status`. (`--all-cases` still accepted as a hidden alias of the default.)
+
+### Classification merge → patient/case spreadsheet
+
+`python3 -m src.tasks.hemorrhage.merge_classifications` fills a template (`data/raw/NCH_cavernom_eingeblutet.xlsx`; env `HEMORRHAGE_CLASSIFICATION_TEMPLATE_XLSX`) with one-hot final-class columns and writes `data/outputs/NCH_cavernom_eingeblutet_classified.xlsx` (raw never mutated). Template is **one row per report**; each case `(excel_pid, excel_opdat, opber_fallnr)` is classified once and broadcast onto all its report rows. Columns (`1`/`0`): `hämorrhagisch akut`, `hämorrhagisch nicht akut`, `hämorrhagisch historisch`, `nicht hämorrhagisch`. Failed / unknown-subtype / unmatched rows stay blank with a reason in `klassifikation_status`. Logic + tests: `src/tasks/hemorrhage/export/classification_merge.py`, `tests/test_classification_merge.py`.
 
 ### Inference architecture — two-stage (current)
 
@@ -102,14 +106,14 @@ python3 -m src.tasks.hemorrhage.analyze_reference_labels
 python3 -m src.tasks.hemorrhage.run_case_pipeline --dry-run --limit 5
 
 # 5. Limited LLM pilot (recommended before the full run)
-#    Default = binary-labeled cohort only (verify_only/unknown/inconsistent excluded)
+#    Default = ALL patients (verify_only/unknown/unlabeled included)
 python3 -m src.tasks.hemorrhage.run_case_pipeline --limit 10
 
 # 6. Full case inference (one row per case, written incrementally)
 python3 -m src.tasks.hemorrhage.run_case_pipeline
 #    Cohort variants:
-python3 -m src.tasks.hemorrhage.run_case_pipeline --include-verify-only
-python3 -m src.tasks.hemorrhage.run_case_pipeline --all-cases
+python3 -m src.tasks.hemorrhage.run_case_pipeline --labeled-only                      # eval cohort
+python3 -m src.tasks.hemorrhage.run_case_pipeline --labeled-only --include-verify-only
 
 # 7. Build review exports (also writes FN/FP detailed reviews + confusion review)
 python3 -m src.tasks.hemorrhage.build_prediction_review
@@ -119,16 +123,20 @@ python3 -m src.tasks.hemorrhage.evaluate_predictions
 #    optional exploratory sensitivity (verify_only treated as non_hemorrhagic):
 python3 -m src.tasks.hemorrhage.evaluate_predictions --include-verify-as-negative
 
-# 9. Inspect key results
+# 9. Merge classifications into the patient/case spreadsheet (one-hot columns)
+python3 -m src.tasks.hemorrhage.merge_classifications
+
+# 10. Inspect key results
 cat  data/evaluation/hemorrhage_metrics_summary.txt
 cat  data/evaluation/hemorrhage_subtype_distribution.csv
 head -20 data/outputs/hemorrhage_confusion_review.csv
+cat  data/outputs/hemorrhage_classification_merge_summary.txt
 ls -lh data/evaluation/plots/
 ```
 
 `--limit N` (first N cases, applied after cohort filter), `--case-id ID` (single case, bypasses
-cohort filter), `--dry-run` (no LLM), `--output PATH`, `--all-cases` (process all), and
-`--include-verify-only` (add verify_only cases) are available on `run_case_pipeline`.
+cohort filter), `--dry-run` (no LLM), `--output PATH`, `--labeled-only` (binary eval cohort), and
+`--include-verify-only` (with `--labeled-only`, add verify_only cases) are available on `run_case_pipeline`.
 
 Expected outputs:
 

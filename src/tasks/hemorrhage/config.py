@@ -17,6 +17,9 @@ from src.pipeline.paths import PROJECT_ROOT, REAL_RAW_DIR
 DEFAULT_REPORTS_XLSX_FILENAME = "NCH_pidlist_opdat_ab_eb_op_SJO_pg_DRQ0001416.xlsx"
 # REFERENCE = manual labels / verification (CCM DAVF cohort sheet)
 DEFAULT_REFERENCE_XLSX_FILENAME = "260507_CCM_DAVF.xlsx"
+# CLASSIFICATION TEMPLATE = patient/case sheet (one row per report) that gets the
+# one-hot final-class columns filled in by the merge step.
+DEFAULT_CLASSIFICATION_TEMPLATE_XLSX_FILENAME = "NCH_cavernom_eingeblutet.xlsx"
 
 # Alternate filenames if the configured path is missing (not a silent rename)
 REPORTS_XLSX_ALTERNATE_FILENAMES: tuple[str, ...] = (
@@ -26,6 +29,11 @@ REPORTS_XLSX_ALTERNATE_FILENAMES: tuple[str, ...] = (
 REFERENCE_XLSX_ALTERNATE_FILENAMES: tuple[str, ...] = (
     "260507 CCM DAVF.xlsx",
     DEFAULT_REFERENCE_XLSX_FILENAME,
+)
+
+CLASSIFICATION_TEMPLATE_XLSX_ALTERNATE_FILENAMES: tuple[str, ...] = (
+    DEFAULT_CLASSIFICATION_TEMPLATE_XLSX_FILENAME,
+    "NCH_cavernom_eingeblutet.xlsx",
 )
 
 
@@ -53,6 +61,20 @@ def configured_reference_xlsx_path() -> Path:
         "HEMORRHAGE_REFERENCE_XLSX",
         REAL_RAW_DIR / DEFAULT_REFERENCE_XLSX_FILENAME,
     )
+
+
+def configured_classification_template_xlsx_path() -> Path:
+    """Primary configured path for the classification merge template (data/raw/)."""
+    return _path_from_env_or_default(
+        "HEMORRHAGE_CLASSIFICATION_TEMPLATE_XLSX",
+        REAL_RAW_DIR / DEFAULT_CLASSIFICATION_TEMPLATE_XLSX_FILENAME,
+    )
+
+
+def classification_template_sheet_name() -> str | None:
+    """Optional sheet name for the classification template; first sheet if unset."""
+    raw = os.environ.get("HEMORRHAGE_CLASSIFICATION_TEMPLATE_SHEET", "").strip()
+    return raw or None
 
 
 def reports_sheet_name() -> str | None:

@@ -291,6 +291,20 @@ HEMORRHAGE_FINAL_TARGET_SUMMARY_PATH = (
     DATA_OUTPUTS_DIR / "hemorrhage_final_target_summary.csv"
 )
 
+# Classification merge: fill a patient/case spreadsheet (one row per report) with
+# one-hot final-class columns. Template lives under data/raw/ (configurable via
+# config.configured_classification_template_xlsx_path); merged copy is written to
+# data/outputs/ so the raw template is never mutated.
+HEMORRHAGE_CLASSIFICATION_MERGED_PATH = (
+    DATA_OUTPUTS_DIR / "NCH_cavernom_eingeblutet_classified.xlsx"
+)
+HEMORRHAGE_CLASSIFICATION_MERGE_SUMMARY_PATH = (
+    DATA_OUTPUTS_DIR / "hemorrhage_classification_merge_summary.txt"
+)
+HEMORRHAGE_CLASSIFICATION_UNMATCHED_PATH = (
+    DATA_OUTPUTS_DIR / "hemorrhage_classification_unmatched_rows.csv"
+)
+
 # Hemorrhage preliminary evaluation (labeled subset)
 HEMORRHAGE_EVALUATION_DIR = DATA_DIR / "evaluation"
 HEMORRHAGE_EVALUATION_PLOTS_DIR = HEMORRHAGE_EVALUATION_DIR / "plots"

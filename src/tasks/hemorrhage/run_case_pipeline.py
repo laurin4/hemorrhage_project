@@ -3,7 +3,11 @@ CLI: hemorrhage case-level LLM inference (prototype, qualitative review).
 
   python3 -m src.tasks.hemorrhage.run_case_pipeline --dry-run --limit 5
   python3 -m src.tasks.hemorrhage.run_case_pipeline --limit 5
-  python3 -m src.tasks.hemorrhage.run_case_pipeline
+  python3 -m src.tasks.hemorrhage.run_case_pipeline                 # ALL patients
+  python3 -m src.tasks.hemorrhage.run_case_pipeline --labeled-only  # eval cohort only
+
+By default every patient is classified (incl. Verify_Vaskulär / unlabeled). Use
+--labeled-only to restrict to the binary-labeled cohort for evaluation runs.
 """
 
 from __future__ import annotations
@@ -35,16 +39,26 @@ def main(argv: list[str] | None = None) -> int:
         help="Build prompts only; do not call LLM",
     )
     parser.add_argument(
-        "--all-cases",
+        "--labeled-only",
         action="store_true",
-        help="Process ALL cases (disable default binary-labeled cohort filter)",
+        help=(
+            "Restrict to the binary-labeled evaluation cohort "
+            "(reference hemorrhagic / non_hemorrhagic only). "
+            "Default: classify ALL patients, including Verify_Vaskulär / unlabeled."
+        ),
     )
     parser.add_argument(
         "--include-verify-only",
         action="store_true",
-        help="Include verify_only cases in addition to the binary-labeled cohort",
+        help="With --labeled-only, also include verify_only cases",
     )
+    # Backwards-compatible alias (all-cases is now the default).
+    parser.add_argument("--all-cases", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
+
+    # Default behaviour: classify every patient (verify_only / unlabeled included).
+    # --labeled-only opts back into the binary cohort for evaluation runs.
+    process_all_cases = not args.labeled_only
 
     result = run_hemorrhage_case_pipeline(
         reports_path=args.reports,
@@ -53,7 +67,7 @@ def main(argv: list[str] | None = None) -> int:
         limit=args.limit,
         case_id=args.case_id,
         dry_run=args.dry_run,
-        process_all_cases=args.all_cases,
+        process_all_cases=process_all_cases,
         include_verify_only=args.include_verify_only,
     )
 

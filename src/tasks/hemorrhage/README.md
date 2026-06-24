@@ -18,7 +18,11 @@ python3 -m src.tasks.hemorrhage.run_case_pipeline --dry-run --limit 5
 export LLM_PROVIDER=usz_api
 export LLM_TEMPERATURE=0
 python3 -m src.tasks.hemorrhage.run_case_pipeline --limit 5
-python3 -m src.tasks.hemorrhage.run_case_pipeline
+python3 -m src.tasks.hemorrhage.run_case_pipeline                 # ALL patients (default)
+python3 -m src.tasks.hemorrhage.run_case_pipeline --labeled-only  # eval cohort only
+
+# Merge the case classifications into the patient/case spreadsheet
+python3 -m src.tasks.hemorrhage.merge_classifications
 ```
 
 **Outputs:**
@@ -27,6 +31,7 @@ python3 -m src.tasks.hemorrhage.run_case_pipeline
 - `data/outputs/hemorrhage_case_predictions.csv` — one row per case
 - `data/outputs/hemorrhage_prediction_review.csv` — unified qualitative review table
 - `data/outputs/hemorrhage_confusion_review.csv` — compact TP/TN/FP/FN overview
+- `data/outputs/NCH_cavernom_eingeblutet_classified.xlsx` — the template spreadsheet with one-hot class columns filled
 
 ## Prediction review export (qualitative analysis)
 
@@ -109,18 +114,26 @@ python3 -m src.tasks.hemorrhage.run_case_pipeline [OPTIONS]
 | `--case-id ID` | Single case (bypasses cohort filter) |
 | `--output PATH` | Custom CSV path |
 | `--reports` / `--reference` | Override Excel paths |
-| `--all-cases` | Process ALL cases (disable default cohort filter) |
-| `--include-verify-only` | Add `verify_only` cases to the labeled cohort |
+| `--labeled-only` | Restrict to the binary-labeled evaluation cohort |
+| `--include-verify-only` | With `--labeled-only`, also add `verify_only` cases |
 
-### Inference cohort (default = labeled binary only)
+### Inference cohort (default = ALL patients)
 
-By default the pipeline runs **only on binary-labeled cases** — reference status `hemorrhagic` or `non_hemorrhagic` — for valid evaluation and faster runtime.
+By default the pipeline classifies **every patient**, including `verify_only` (Verify_Vaskulär), `unknown`, and unlabeled cases. They are run through the same two-stage structure; cases without a binary reference simply have no TP/TN/FP/FN.
 
-- Excluded by default: `verify_only`, `unknown`, `inconsistent` (counts reported in startup + summary as `excluded_by_status`).
-- `--include-verify-only` additionally processes `verify_only` cases.
-- `--all-cases` disables filtering entirely.
-- If **no reference is available**, filtering is skipped (cannot determine status) and all cases are processed with a warning (`cohort_mode="all_cases (no reference available)"`).
+- `--labeled-only` restricts to the binary-labeled evaluation cohort (reference status `hemorrhagic` or `non_hemorrhagic`) for valid evaluation / faster runtime. Excluded then: `verify_only`, `unknown`, `inconsistent` (reported as `excluded_by_status`).
+- `--include-verify-only` (with `--labeled-only`) additionally processes `verify_only` cases.
 - Reference status is derived from the spreadsheet label cells via `io.reference_lookup.reference_binary_status` (single source of truth, shared with the review/eval `derive_reference_status`).
+
+### Classification merge (patient/case spreadsheet)
+
+`python3 -m src.tasks.hemorrhage.merge_classifications` fills a patient/case template
+(`data/raw/NCH_cavernom_eingeblutet.xlsx`, override via `HEMORRHAGE_CLASSIFICATION_TEMPLATE_XLSX`) with **one-hot** final-class columns and writes a merged copy to `data/outputs/NCH_cavernom_eingeblutet_classified.xlsx` (the raw template is never modified).
+
+- The template has **one row per report**; each case `(excel_pid, excel_opdat, opber_fallnr)` is classified once and broadcast onto all its report rows.
+- One-hot columns (`1` / `0`): `hämorrhagisch akut`, `hämorrhagisch nicht akut`, `hämorrhagisch historisch`, `nicht hämorrhagisch`.
+- Failed (`parse_failed` / `llm_failed`), unknown-subtype, or unmatched cases leave all four columns **blank** and record a reason in `klassifikation_status` (so an empty cell is never confused with a real `0`).
+- Key matching uses the same normalization as the reports loader (`excel_pid`/`opber_fallnr` stringified, `excel_opdat` → ISO date). Unmatched template rows are listed in `data/outputs/hemorrhage_classification_unmatched_rows.csv`; counts go to `hemorrhage_classification_merge_summary.txt`.
 
 ### Two-stage hierarchical inference (architecture)
 
