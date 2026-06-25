@@ -231,3 +231,38 @@ def test_run_merge_end_to_end(tmp_path):
     assert (case1[CLASS_HAEMORRHAGIC_NON_ACUTE] == 1).all()
     case3 = merged[merged["opber_fallnr"] == "F3"]
     assert (case3[STATUS_COLUMN] == STATUS_NOT_IN_PREDICTIONS).all()
+
+    # Column order: record columns first, then one-hot classes, then status last.
+    cols = list(merged.columns)
+    assert cols[-1] == STATUS_COLUMN
+    assert cols[-5:-1] == list(CLASS_COLUMNS)
+    # 'typus' (a record column) must come before the class block.
+    assert cols.index("typus") < cols.index(CLASS_HAEMORRHAGIC_ACUTE)
+
+
+def test_merge_reorders_class_columns_to_right():
+    # Template with class columns deliberately placed in the MIDDLE.
+    template = pd.DataFrame(
+        [["1", "2014-05-03", "F1", "01", "", "", "", "", "Mueller", "diag text"]],
+        columns=[
+            "excel_pid",
+            "excel_opdat",
+            "opber_fallnr",
+            "typus",
+            CLASS_HAEMORRHAGIC_ACUTE,
+            CLASS_HAEMORRHAGIC_NON_ACUTE,
+            CLASS_HAEMORRHAGIC_HISTORICAL,
+            CLASS_NON_HAEMORRHAGIC,
+            "bername",
+            "diag",
+        ],
+    )
+    preds = _preds_df([["1", "2014-05-03", "F1", "hämorrhagisch", "akut", "success"]])
+    merged, _ = merge_classifications_into_template(
+        template, build_case_classification_map(preds)
+    )
+    cols = list(merged.columns)
+    # Record columns (incl. bername/diag) come before the class block.
+    assert cols.index("bername") < cols.index(CLASS_HAEMORRHAGIC_ACUTE)
+    assert cols.index("diag") < cols.index(CLASS_HAEMORRHAGIC_ACUTE)
+    assert cols[-5:] == list(CLASS_COLUMNS) + [STATUS_COLUMN]

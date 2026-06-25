@@ -322,7 +322,25 @@ def merge_classifications_into_template(
     result.template_cases = len(template_case_keys)
     result.matched_cases = len(matched_case_keys)
     result.class_row_counts = class_row_counts
+
+    out = _reorder_columns(out, class_cols)
     return out, result
+
+
+def _reorder_columns(df: pd.DataFrame, class_cols: Dict[str, str]) -> pd.DataFrame:
+    """
+    Put patient-record columns first, then the one-hot class columns, then status.
+
+    Original record-column order is preserved; the class columns follow in the
+    canonical order (akut, nicht akut, historisch, nicht hämorrhagisch) and
+    ``klassifikation_status`` is forced to the very end.
+    """
+    class_actual = [class_cols[c] for c in CLASS_COLUMNS if c in class_cols]
+    appended = set(class_actual) | {STATUS_COLUMN}
+    record_cols = [c for c in df.columns if c not in appended]
+    ordered = record_cols + class_actual + [STATUS_COLUMN]
+    ordered = [c for c in ordered if c in df.columns]
+    return df[ordered]
 
 
 def _unmatched_rows_frame(merged: pd.DataFrame, key_cols: Dict[str, str]) -> pd.DataFrame:
