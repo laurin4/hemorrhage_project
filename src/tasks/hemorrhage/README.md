@@ -68,6 +68,46 @@ head -5 data/outputs/hemorrhage_historical_cases.csv
 
 Summary: `data/outputs/hemorrhage_prediction_review_summary.txt`
 
+## Demo — watch the LLM extraction work (proof of concept)
+
+A polished, interactive walkthrough that shows how the prompt-based pipeline turns
+unstructured German clinical text into validated, structured output (free-text →
+prompt engineering → LLM → JSON validation → structured output → spreadsheet). It
+**runs instantly and never calls the LLM** during a presentation: it replays real,
+previously captured responses frozen in `data/demo/`. Full guide:
+[`docs/demo/DEMO_GUIDE.md`](../../../docs/demo/DEMO_GUIDE.md).
+
+```bash
+# Interactive menu: [1] positive  [2] negative  [3] both  [q] quit
+python3 -m src.tasks.hemorrhage.demo
+
+# Direct (skip the menu)
+python3 -m src.tasks.hemorrhage.demo --positive
+python3 -m src.tasks.hemorrhage.demo --negative
+python3 -m src.tasks.hemorrhage.demo --both
+#   --no-pause  run straight through (no ENTER waits) · --full  show full prompts
+```
+
+It demonstrates two cases side by side — a hemorrhagic one (both stages run) and a
+non-hemorrhagic one (`STAGE 2 SKIPPED`) — so the conditional, hierarchical design is
+obvious.
+
+### Generate the snapshots once (where data + predictions exist, e.g. the server)
+
+```bash
+python3 -m src.tasks.hemorrhage.demo --snapshot-positive   # → data/demo/positive_case.json
+python3 -m src.tasks.hemorrhage.demo --snapshot-negative   # → data/demo/negative_case.json
+#   pick a specific case with --case-id <case_id>; add --live to capture a fresh response
+```
+
+Each snapshot JSON is self-contained (report text, both prompts, both raw LLM
+responses, parsed results, final class), so you can copy it to a laptop and present
+in a meeting room with zero dependencies — no server, no Excel files.
+
+> The lower-level `python3 -m src.tasks.hemorrhage.demo_extraction` (single-case
+> narration with `--snapshot` / `--from-snapshot` / `--replay`) still exists and is
+> reused under the hood; prefer `... .demo` for presentations.
+
 ---
 
 ## Preliminary evaluation (quantitative metrics + plots)
