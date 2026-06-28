@@ -64,6 +64,18 @@ python3 -m src.tasks.hemorrhage.demo --snapshot-positive --case-id case_..._..._
 python3 -m src.tasks.hemorrhage.demo --snapshot-negative --case-id case_..._..._...
 ```
 
+### Excluding a patient from auto-pick
+
+Some reference labels are clinically unreliable (the model may "agree" with a wrong
+label, so a case looks like a correct true negative while actually being a missed
+bleeding). Such patients are skipped via a built-in exclusion list
+(`DEMO_EXCLUDED_PIDS` in `demo.py`). To exclude more on the fly:
+
+```bash
+python3 -m src.tasks.hemorrhage.demo --snapshot-negative --exclude-pid 10206120
+#   --exclude-pid is repeatable and adds to the built-in exclusions
+```
+
 ### Capturing a fresh response live (slow; needs the LLM server)
 
 If a case has no stored response yet, add `--live` to call the model once while

@@ -48,6 +48,11 @@ DEMO_DIR = DATA_DIR / "demo"
 POSITIVE_SNAPSHOT = DEMO_DIR / "positive_case.json"
 NEGATIVE_SNAPSHOT = DEMO_DIR / "negative_case.json"
 
+# Patients (excel_pid) to NEVER auto-pick for the demo, e.g. cases whose reference
+# label is clinically unreliable (the model "agrees" with a wrong label, so it would
+# look like a correct true negative while actually being a missed bleeding).
+DEMO_EXCLUDED_PIDS: frozenset[str] = frozenset({"10206120"})
+
 SEP = "=" * 60
 THIN = "-" * 60
 RULE = "\u2014" * 36  # em-dash rule for the final box
@@ -264,18 +269,32 @@ def _first_case_id(preds: pd.DataFrame, mask: "pd.Series") -> Optional[str]:
     return str(hits.iloc[0].get("case_id", "")).strip() or None
 
 
-def _autopick_negative_from_predictions(preds: pd.DataFrame) -> Optional[str]:
+def _excluded_pid_mask(preds: pd.DataFrame, exclude_pids: Optional[frozenset[str]]) -> "pd.Series":
+    if not exclude_pids or "excel_pid" not in preds.columns:
+        return pd.Series(False, index=preds.index)
+    norm = {str(p).strip() for p in exclude_pids}
+    return preds["excel_pid"].astype(str).str.strip().isin(norm)
+
+
+def _autopick_negative_from_predictions(
+    preds: pd.DataFrame,
+    exclude_pids: Optional[frozenset[str]] = None,
+) -> Optional[str]:
     """
     Pick a *correct* nicht_hämorrhagisch case (true negative) so Stage 2 is skipped
     AND the demo never shows a misclassification (e.g. a false negative). Requires
     the reference label to confirm correctness; falls back to any predicted
     nicht_hämorrhagisch case only if no reference labels are available at all.
+    Patients in ``exclude_pids`` are never selected.
     """
     if preds.empty or "label" not in preds.columns:
         return None
-    base = preds.get("status", "").astype(str).str.strip().eq("success") & preds[
-        "label"
-    ].astype(str).str.strip().str.lower().eq("nicht_hämorrhagisch")
+    keep = ~_excluded_pid_mask(preds, exclude_pids)
+    base = (
+        keep
+        & preds.get("status", "").astype(str).str.strip().eq("success")
+        & preds["label"].astype(str).str.strip().str.lower().eq("nicht_hämorrhagisch")
+    )
     if "reference_label_status" in preds.columns:
         ref = preds["reference_label_status"].astype(str).str.strip().str.lower()
         # Prefer a verified true negative; never knowingly show a false negative.
@@ -295,16 +314,20 @@ def _select_polarity_case(
     *,
     kind: str,
     case_id: Optional[str],
+    exclude_pids: Optional[frozenset[str]] = None,
 ) -> Optional[ClinicalCase]:
     by_id = {c.case_id: c for c in cases}
     if case_id:
+        # Explicit selection wins — even if otherwise excluded.
         return by_id.get(case_id)
+
+    excluded = {str(p).strip() for p in (exclude_pids or frozenset())}
 
     if preds is not None:
         picked = (
-            _autopick_from_predictions(preds)
+            _autopick_from_predictions(preds, exclude_pids)
             if kind == "positive"
-            else _autopick_negative_from_predictions(preds)
+            else _autopick_negative_from_predictions(preds, exclude_pids)
         )
         if picked and picked in by_id:
             return by_id[picked]
@@ -312,9 +335,14 @@ def _select_polarity_case(
     # Fallback heuristic when no predictions are available.
     want_bleeding = kind == "positive"
     for c in cases:
+        if str(c.excel_pid).strip() in excluded:
+            continue
         if _has_bleeding_hint(c) == want_bleeding:
             return c
-    return cases[0] if cases else None
+    for c in cases:
+        if str(c.excel_pid).strip() not in excluded:
+            return c
+    return None
 
 
 def generate_snapshot(
@@ -325,6 +353,7 @@ def generate_snapshot(
     live: bool = False,
     predictions_path: Optional[Path] = None,
     reports_path: Optional[Path] = None,
+    exclude_pids: Optional[frozenset[str]] = None,
 ) -> int:
     """Freeze one case (positive/negative) to a self-contained JSON snapshot."""
     pred_path = predictions_path or HEMORRHAGE_CASE_PREDICTIONS_PATH
@@ -339,7 +368,12 @@ def generate_snapshot(
             print(f"  - {e}")
         return 1
 
-    case = _select_polarity_case(cases, preds, kind=kind, case_id=case_id)
+    excluded = DEMO_EXCLUDED_PIDS if exclude_pids is None else exclude_pids
+    if excluded and not case_id:
+        print(f"Excluding patient(s) from auto-pick: {sorted(excluded)}")
+    case = _select_polarity_case(
+        cases, preds, kind=kind, case_id=case_id, exclude_pids=excluded
+    )
     if case is None:
         print(f"Could not find a {kind} case (case_id={case_id!r}).")
         return 1
@@ -475,10 +509,19 @@ def main(argv: list[str] | None = None) -> int:
         "--snapshot-negative", action="store_true", help="(Re)generate data/demo/negative_case.json"
     )
     parser.add_argument("--case-id", type=str, default=None, help="Pick a specific case for snapshot")
+    parser.add_argument(
+        "--exclude-pid",
+        action="append",
+        default=None,
+        metavar="PID",
+        help="excel_pid to skip during auto-pick (repeatable). Adds to the built-in exclusions.",
+    )
     parser.add_argument("--live", action="store_true", help="Call the real LLM when generating a snapshot")
     parser.add_argument("--predictions", type=Path, default=None, help="Predictions CSV (replay source)")
     parser.add_argument("--reports", type=Path, default=None, help="Reports Excel input")
     args = parser.parse_args(argv)
+
+    exclude_pids = DEMO_EXCLUDED_PIDS | frozenset(args.exclude_pid or ())
 
     if args.snapshot_positive:
         return generate_snapshot(
@@ -488,6 +531,7 @@ def main(argv: list[str] | None = None) -> int:
             live=args.live,
             predictions_path=args.predictions,
             reports_path=args.reports,
+            exclude_pids=exclude_pids,
         )
     if args.snapshot_negative:
         return generate_snapshot(
@@ -497,6 +541,7 @@ def main(argv: list[str] | None = None) -> int:
             live=args.live,
             predictions_path=args.predictions,
             reports_path=args.reports,
+            exclude_pids=exclude_pids,
         )
 
     pause = not args.no_pause

@@ -112,16 +112,26 @@ def _first_case_id(preds: pd.DataFrame, mask: "pd.Series") -> Optional[str]:
     return str(hits.iloc[0].get("case_id", "")).strip() or None
 
 
-def _autopick_from_predictions(preds: pd.DataFrame) -> Optional[str]:
+def _autopick_from_predictions(
+    preds: pd.DataFrame,
+    exclude_pids: Optional[frozenset[str]] = None,
+) -> Optional[str]:
     """
     Pick a *correct* hämorrhagisch case (true positive) with a subtype, so both
     stages show and the demo never displays a misclassification. Falls back to any
-    hämorrhagisch+subtype case if the reference label is unavailable.
+    hämorrhagisch+subtype case if the reference label is unavailable. Patients in
+    ``exclude_pids`` are never selected.
     """
     if preds.empty or "label" not in preds.columns:
         return None
+    if exclude_pids and "excel_pid" in preds.columns:
+        norm = {str(p).strip() for p in exclude_pids}
+        keep = ~preds["excel_pid"].astype(str).str.strip().isin(norm)
+    else:
+        keep = pd.Series(True, index=preds.index)
     base = (
-        preds.get("status", "").astype(str).str.strip().eq("success")
+        keep
+        & preds.get("status", "").astype(str).str.strip().eq("success")
         & preds["label"].astype(str).str.strip().str.lower().eq("hämorrhagisch")
         & preds.get("haemorrhage_subtype", "").astype(str).str.strip().ne("")
     )

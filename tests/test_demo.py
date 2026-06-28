@@ -145,6 +145,34 @@ def test_autopick_negative_refuses_when_only_false_negative_available():
     assert _autopick_negative_from_predictions(preds) is None
 
 
+def test_autopick_negative_skips_excluded_pid():
+    preds = pd.DataFrame(
+        [
+            {
+                "case_id": "bad",
+                "excel_pid": "10206120",
+                "status": "success",
+                "label": "nicht_hämorrhagisch",
+                "haemorrhage_subtype": "",
+                "reference_label_status": "non_hemorrhagic",
+            },
+            {
+                "case_id": "good",
+                "excel_pid": "99999",
+                "status": "success",
+                "label": "nicht_hämorrhagisch",
+                "haemorrhage_subtype": "",
+                "reference_label_status": "non_hemorrhagic",
+            },
+        ]
+    ).astype(str)
+    # Without exclusion the first TN ("bad") would be chosen; excluding its pid skips it.
+    assert _autopick_negative_from_predictions(preds) == "bad"
+    assert (
+        _autopick_negative_from_predictions(preds, frozenset({"10206120"})) == "good"
+    )
+
+
 def test_autopick_positive_prefers_true_positive():
     from src.tasks.hemorrhage.demo_extraction import _autopick_from_predictions
 
