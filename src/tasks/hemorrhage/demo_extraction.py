@@ -228,6 +228,7 @@ def build_trace(
                 "label": pred.get("label"),
                 "sicherheit": pred.get("sicherheit"),
                 "begruendung": pred.get("begruendung"),
+                "evidenz": pred.get("evidenz") or [],
             },
         },
         "stage2": None,
@@ -252,6 +253,7 @@ def build_trace(
                 "haemorrhage_subtype": subtype_result.haemorrhage_subtype,
                 "sicherheit": subtype_result.sicherheit,
                 "begruendung": subtype_result.begruendung,
+                "evidenz": subtype_result.evidenz or [],
             },
         }
 

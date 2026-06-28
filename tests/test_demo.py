@@ -11,7 +11,10 @@ from src.core.case.models import CaseReport, ClinicalCase
 from src.tasks.hemorrhage.demo import (
     _autopick_negative_from_predictions,
     _collapse_evidence,
+    _evidenz_from_stage,
+    _render_cited_passages,
     _select_polarity_case,
+    _split_report_sections,
     load_trace,
     present_case,
 )
@@ -34,11 +37,20 @@ def _make_case(case_id: str, text: str) -> ClinicalCase:
 
 
 def _positive_trace() -> dict:
-    case = _make_case("pos_case", "Eingeblutetes Kavernom, führte zur Resektion. Hämatom nachweisbar.")
+    case = _make_case(
+        "pos_case",
+        "[Diagnosen]\nEingeblutetes Kavernom, führte zur Resektion.\n\n[Vorgehen/Beurteilung]\nHämatom nachweisbar.",
+    )
     return build_trace(
         case,
         binary_raw='{"klasse": 1, "label": "hämorrhagisch", "sicherheit": "hoch", "kurzbegruendung": "Einblutung"}',
-        subtype_raw='{"haemorrhage_subtype": "nicht_akut", "sicherheit": "hoch", "begruendung": "ältere relevante Blutung"}',
+        subtype_raw=(
+            '{"haemorrhage_subtype": "nicht_akut", "sicherheit": "hoch", '
+            '"begruendung": "Ältere relevante Blutung.", "evidenz": ['
+            '{"berichttyp": "Operationsbericht", "feld": "Diagnosen", '
+            '"textstelle": "Eingeblutetes Kavernom", '
+            '"interpretation": "Prior bleed still relevant to current surgery."}]}'
+        ),
         stage2_ran=True,
         mode="TEST",
     )
@@ -75,6 +87,38 @@ def test_present_negative_skips_stage2(capsys):
     assert "Stage 2 prompt" not in out  # Step 5 must not appear
     assert "Hemorrhagic:         NO" in out
     assert CLASS_NON_HAEMORRHAGIC in out
+
+
+def test_present_positive_shows_cited_passages(capsys):
+    present_case(_positive_trace(), pause=False)
+    out = capsys.readouterr().out
+    assert "CITED PASSAGES" in out
+    assert "Eingeblutetes Kavernom" in out
+    assert "Prior bleed still relevant" in out
+    assert "Report 1 ·" in out
+    assert "[Diagnosen]" in out
+
+
+def test_split_report_sections():
+    text = "[Diagnosen]\nFoo\n\n[Vorgehen/Beurteilung]\nBar"
+    sections = _split_report_sections(text)
+    assert sections == [("Diagnosen", "Foo"), ("Vorgehen/Beurteilung", "Bar")]
+
+
+def test_evidenz_from_stage_raw_fallback():
+    stage = {
+        "parsed": {},
+        "raw_response": '{"evidenz": [{"textstelle": "Blutung", "interpretation": "acute"}]}',
+    }
+    items = _evidenz_from_stage(stage)
+    assert len(items) == 1
+    assert items[0]["textstelle"] == "Blutung"
+
+
+def test_render_cited_passages_empty_stage1(capsys):
+    _render_cited_passages([], stage_label="Stage 1", compact_stage=True)
+    out = capsys.readouterr().out
+    assert "compact output" in out
 
 
 def test_present_collapses_evidence_in_user_prompt(capsys):

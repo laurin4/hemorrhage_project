@@ -118,6 +118,145 @@ def _collapse_evidence(user_prompt: str, input_text: str) -> str:
     return user_prompt
 
 
+def _split_report_sections(text: str) -> List[tuple[str, str]]:
+    """Split stitched report text into labelled sections like [Diagnosen]."""
+    sections: List[tuple[str, str]] = []
+    heading = ""
+    lines: List[str] = []
+    for line in (text or "").splitlines():
+        stripped = line.strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            if heading or lines:
+                body = "\n".join(lines).strip()
+                if heading or body:
+                    sections.append((heading or "Text", body))
+            heading = stripped.strip("[]")
+            lines = []
+        else:
+            lines.append(line)
+    body = "\n".join(lines).strip()
+    if heading or body:
+        sections.append((heading or "Text", body))
+    if not sections and (text or "").strip():
+        sections.append(("Text", text.strip()))
+    return sections
+
+
+def _evidenz_from_stage(stage: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Return normalised evidenz items from parsed trace or raw JSON (old snapshots)."""
+    parsed = stage.get("parsed") or {}
+    items = parsed.get("evidenz")
+    if isinstance(items, list) and items:
+        return [e for e in items if isinstance(e, dict)]
+    raw = str(stage.get("raw_response", "") or "").strip()
+    if not raw:
+        return []
+    try:
+        obj = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return []
+    if not isinstance(obj, dict):
+        return []
+    ev = obj.get("evidenz")
+    if isinstance(ev, list):
+        return [e for e in ev if isinstance(e, dict)]
+    return []
+
+
+def _render_llm_input_evidence(
+    reports: List[Dict[str, str]],
+    input_text: str,
+    *,
+    limit: Optional[int] = None,
+) -> None:
+    """Step 2 — show what the model reads, report-by-report with section labels."""
+    if reports:
+        total_chars = sum(len(str(r.get("report_text", ""))) for r in reports)
+        print(
+            f"  {len(reports)} report(s) · {total_chars:,} characters forwarded to the model\n"
+        )
+        for i, rep in enumerate(reports, start=1):
+            label = rep.get("typus_label", "Report")
+            body = str(rep.get("report_text", "") or "")
+            print(f"  {THIN}")
+            print(f"  Report {i} · {label}  ({len(body):,} chars)")
+            print(f"  {THIN}")
+            sections = _split_report_sections(body)
+            if len(sections) > 1 or (sections and sections[0][0] != "Text"):
+                for heading, section_body in sections:
+                    if not section_body.strip():
+                        continue
+                    print(f"\n    [{heading}]")
+                    _block(section_body, limit=limit, indent="      ")
+            else:
+                _block(body, limit=limit)
+            print("")
+    else:
+        _block(input_text or "(no report text)", limit=limit)
+
+
+def _render_model_reasoning(begruendung: object, *, stage_label: str) -> None:
+    text = str(begruendung or "").strip()
+    print("\n  [MODEL REASONING]")
+    if text:
+        _block(f"«{text}»")
+    else:
+        print("    (no reasoning returned)")
+
+
+def _render_cited_passages(
+    evidenz: List[Dict[str, Any]],
+    *,
+    stage_label: str,
+    compact_stage: bool = False,
+) -> None:
+    """Human-readable evidence cards extracted from the LLM JSON."""
+    print("\n  [CITED PASSAGES — evidence extracted from the reports]")
+    if not evidenz:
+        if compact_stage:
+            print(
+                "    Stage 1 uses compact output: a short reason only, no text citations.\n"
+                "    Citations appear in Stage 2 (subtype), if the case is hemorrhagic."
+            )
+        else:
+            print("    (no structured citations returned by the model)")
+        return
+
+    for i, entry in enumerate(evidenz, start=1):
+        berichttyp = str(entry.get("berichttyp", "") or "").strip()
+        feld = str(entry.get("feld", "") or "").strip()
+        textstelle = str(entry.get("textstelle", "") or "").strip()
+        interpretation = str(entry.get("interpretation", "") or "").strip()
+        source = " · ".join(p for p in (berichttyp, feld) if p) or "clinical text"
+
+        print(f"\n    {i}. {source}")
+        if textstelle:
+            print(f"       Quote:          «{textstelle}»")
+        if interpretation:
+            print(f"       Interpretation: {interpretation}")
+        if not textstelle and not interpretation:
+            print("       (empty evidence item)")
+
+
+def _render_stage_result(stage: Dict[str, Any], *, stage_label: str, compact: bool = False) -> None:
+    """Parsed fields + readable reasoning / evidence (not just raw JSON keys)."""
+    parsed = stage.get("parsed") or {}
+    print("\n  [PARSED & VALIDATED]")
+    if stage_label == "Stage 1":
+        print(f"    Decision:      {parsed.get('label')}  (klasse={parsed.get('klasse')})")
+        print(f"    Confidence:    {parsed.get('sicherheit')}")
+    else:
+        print(f"    Subtype:         {parsed.get('haemorrhage_subtype')}")
+        print(f"    Confidence:    {parsed.get('sicherheit')}")
+
+    _render_model_reasoning(parsed.get("begruendung"), stage_label=stage_label)
+    _render_cited_passages(
+        _evidenz_from_stage(stage),
+        stage_label=stage_label,
+        compact_stage=compact,
+    )
+
+
 def _is_hemorrhagic(stage1: Dict[str, Any]) -> bool:
     parsed = stage1.get("parsed", {})
     if parsed.get("klasse") == 1:
@@ -153,8 +292,18 @@ def present_case(trace: Dict[str, Any], *, pause: bool = True, full: bool = Fals
     _explain("The pipeline receives completely unstructured German clinical documentation.")
     if reports:
         for rep in reports:
-            print(f"  [{rep.get('typus_label', '')}]")
-            _block(rep.get("report_text", ""), limit=text_limit)
+            label = rep.get("typus_label", "")
+            body = str(rep.get("report_text", "") or "")
+            print(f"  [{label}]  ({len(body):,} chars)")
+            sections = _split_report_sections(body)
+            if len(sections) > 1 or (sections and sections[0][0] != "Text"):
+                for heading, section_body in sections:
+                    if not section_body.strip():
+                        continue
+                    print(f"    · {heading}")
+                    _block(section_body, limit=text_limit, indent="      ")
+            else:
+                _block(body, limit=text_limit)
             print("")
     else:
         _block(input_text or "(no report text)", limit=text_limit)
@@ -163,10 +312,10 @@ def present_case(trace: Dict[str, Any], *, pause: bool = True, full: bool = Fals
     # ---- STEP 2: evidence block ------------------------------------------ #
     _step(2, "Evidence presented to the LLM")
     _explain(
-        "The relevant report text is concatenated and forwarded as-is — no manual\n"
-        "feature engineering and no NLP preprocessing. The model reads the raw text."
+        "These report sections are concatenated and forwarded as-is — no manual\n"
+        "feature engineering and no NLP preprocessing. The model reads this raw text."
     )
-    _block(input_text or "(no report text)", limit=text_limit)
+    _render_llm_input_evidence(reports, input_text, limit=text_limit)
     _pause(pause)
 
     # ---- STEP 3: Stage 1 prompt ------------------------------------------ #
@@ -182,15 +331,11 @@ def present_case(trace: Dict[str, Any], *, pause: bool = True, full: bool = Fals
     _step(4, "Real LLM response  →  validated JSON")
     print("  [RAW LLM RESPONSE]")
     _block(stage1.get("raw_response", ""))
-    print("\n  [PARSED & VALIDATED]")
-    p1 = stage1.get("parsed", {})
-    print(f"    klasse        = {p1.get('klasse')}")
-    print(f"    label         = {p1.get('label')}")
-    print(f"    sicherheit    = {p1.get('sicherheit')}")
-    print(f"    begründung    = {p1.get('begruendung')}")
+    _render_stage_result(stage1, stage_label="Stage 1", compact=True)
     _explain("The parser validates and normalises the model output before anything uses it.")
     _pause(pause)
 
+    p1 = stage1.get("parsed", {})
     confidence = p1.get("sicherheit")
 
     # ---- Branch: Stage 2 conditional ------------------------------------- #
@@ -206,11 +351,8 @@ def present_case(trace: Dict[str, Any], *, pause: bool = True, full: bool = Fals
         _step(6, "Real subtype response  →  validated JSON")
         print("  [RAW LLM RESPONSE]")
         _block(stage2.get("raw_response", "") or "(no response)")
-        print("\n  [PARSED & VALIDATED]")
+        _render_stage_result(stage2, stage_label="Stage 2", compact=False)
         p2 = stage2.get("parsed", {})
-        print(f"    haemorrhage_subtype = {p2.get('haemorrhage_subtype')}")
-        print(f"    sicherheit          = {p2.get('sicherheit')}")
-        print(f"    begründung          = {p2.get('begruendung')}")
         confidence = p2.get("sicherheit") or confidence
         _pause(pause)
     else:
