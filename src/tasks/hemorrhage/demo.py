@@ -257,17 +257,36 @@ def _has_bleeding_hint(case: ClinicalCase) -> bool:
     return any(h in text for h in BLEEDING_HINTS)
 
 
-def _autopick_negative_from_predictions(preds: pd.DataFrame) -> Optional[str]:
-    """Pick a case predicted nicht_hämorrhagisch (Stage 2 will be skipped)."""
-    if preds.empty or "label" not in preds.columns:
-        return None
-    mask = preds.get("status", "").astype(str).str.strip().eq("success") & preds[
-        "label"
-    ].astype(str).str.strip().str.lower().eq("nicht_hämorrhagisch")
+def _first_case_id(preds: pd.DataFrame, mask: "pd.Series") -> Optional[str]:
     hits = preds[mask]
     if hits.empty:
         return None
     return str(hits.iloc[0].get("case_id", "")).strip() or None
+
+
+def _autopick_negative_from_predictions(preds: pd.DataFrame) -> Optional[str]:
+    """
+    Pick a *correct* nicht_hämorrhagisch case (true negative) so Stage 2 is skipped
+    AND the demo never shows a misclassification (e.g. a false negative). Requires
+    the reference label to confirm correctness; falls back to any predicted
+    nicht_hämorrhagisch case only if no reference labels are available at all.
+    """
+    if preds.empty or "label" not in preds.columns:
+        return None
+    base = preds.get("status", "").astype(str).str.strip().eq("success") & preds[
+        "label"
+    ].astype(str).str.strip().str.lower().eq("nicht_hämorrhagisch")
+    if "reference_label_status" in preds.columns:
+        ref = preds["reference_label_status"].astype(str).str.strip().str.lower()
+        # Prefer a verified true negative; never knowingly show a false negative.
+        picked = _first_case_id(preds, base & ref.eq("non_hemorrhagic"))
+        if picked:
+            return picked
+        # If reference labels exist but none are a confirmed TN, do NOT fall back to
+        # an unverified (possibly wrong) case — signal "no clean negative found".
+        if ref.ne("").any():
+            return None
+    return _first_case_id(preds, base)
 
 
 def _select_polarity_case(
@@ -347,7 +366,31 @@ def generate_snapshot(
     label = trace["final"].get("label")
     print(f"Saved {kind} snapshot → {out_path}")
     print(f"  case_id = {case.case_id}   label = {label}   subtype = {trace['final'].get('subtype')}")
+
+    # Correctness check vs reference — so we never present a misclassification.
+    ref_status = _reference_status_for_case(preds, case.case_id)
+    if ref_status:
+        expected = "hemorrhagic" if kind == "positive" else "non_hemorrhagic"
+        correct = ref_status == expected
+        print(f"  reference_label_status = {ref_status}   ->  {'CORRECT ✓' if correct else 'MISMATCH ✗'}")
+        if not correct:
+            print(
+                "  [!] WARNING: this case is NOT a verified "
+                f"{'true positive' if kind == 'positive' else 'true negative'}.\n"
+                "      Pick a clean case explicitly with --case-id, or check the predictions CSV."
+            )
+    else:
+        print("  reference_label_status = (no reference label available for this case)")
     return 0
+
+
+def _reference_status_for_case(preds: Optional[pd.DataFrame], case_id: str) -> str:
+    if preds is None or "reference_label_status" not in preds.columns:
+        return ""
+    row = preds[preds.get("case_id", "").astype(str).str.strip() == str(case_id).strip()]
+    if row.empty:
+        return ""
+    return str(row.iloc[0].get("reference_label_status", "")).strip().lower()
 
 
 # --------------------------------------------------------------------------- #

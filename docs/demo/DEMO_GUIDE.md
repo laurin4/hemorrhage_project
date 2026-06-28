@@ -47,6 +47,13 @@ data/demo/positive_case.json
 data/demo/negative_case.json
 ```
 
+> **Correctness guarantee:** the auto-picker only selects cases that the model got
+> **right** (verified against the reference label): a true positive for the positive
+> demo and a true negative for the negative demo. It will never auto-pick a
+> misclassification (e.g. a false negative). The command prints the chosen case's
+> `reference_label_status` and a `CORRECT ✓` / `MISMATCH ✗` line so you can confirm.
+> If no verified clean case exists, use `--case-id` to choose one explicitly.
+
 These two files are portable — copy them to any machine (e.g. your laptop) and the
 demo will run there with **no data, no predictions CSV and no LLM**.
 

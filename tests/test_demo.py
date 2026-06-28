@@ -104,6 +104,71 @@ def test_autopick_negative():
     assert _autopick_negative_from_predictions(preds) == "n"
 
 
+def test_autopick_negative_prefers_true_negative_over_false_negative():
+    # 'fn' is predicted negative but is truly hemorrhagic (a mistake) → must be avoided.
+    # 'tn' is predicted negative and truly non-hemorrhagic → must be chosen.
+    preds = pd.DataFrame(
+        [
+            {
+                "case_id": "fn",
+                "status": "success",
+                "label": "nicht_hämorrhagisch",
+                "haemorrhage_subtype": "",
+                "reference_label_status": "hemorrhagic",
+            },
+            {
+                "case_id": "tn",
+                "status": "success",
+                "label": "nicht_hämorrhagisch",
+                "haemorrhage_subtype": "",
+                "reference_label_status": "non_hemorrhagic",
+            },
+        ]
+    ).astype(str)
+    assert _autopick_negative_from_predictions(preds) == "tn"
+
+
+def test_autopick_negative_refuses_when_only_false_negative_available():
+    # Reference labels exist but the only predicted-negative case is wrong → return None
+    # rather than knowingly presenting a misclassification.
+    preds = pd.DataFrame(
+        [
+            {
+                "case_id": "fn",
+                "status": "success",
+                "label": "nicht_hämorrhagisch",
+                "haemorrhage_subtype": "",
+                "reference_label_status": "hemorrhagic",
+            },
+        ]
+    ).astype(str)
+    assert _autopick_negative_from_predictions(preds) is None
+
+
+def test_autopick_positive_prefers_true_positive():
+    from src.tasks.hemorrhage.demo_extraction import _autopick_from_predictions
+
+    preds = pd.DataFrame(
+        [
+            {
+                "case_id": "fp",
+                "status": "success",
+                "label": "hämorrhagisch",
+                "haemorrhage_subtype": "akut",
+                "reference_label_status": "non_hemorrhagic",
+            },
+            {
+                "case_id": "tp",
+                "status": "success",
+                "label": "hämorrhagisch",
+                "haemorrhage_subtype": "nicht_akut",
+                "reference_label_status": "hemorrhagic",
+            },
+        ]
+    ).astype(str)
+    assert _autopick_from_predictions(preds) == "tp"
+
+
 def test_select_polarity_falls_back_to_keyword_without_preds():
     cases = [
         _make_case("c_pos", "Akute Blutung mit Hämatom."),

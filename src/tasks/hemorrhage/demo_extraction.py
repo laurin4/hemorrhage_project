@@ -105,19 +105,34 @@ def _case_has_bleeding_hint(case: ClinicalCase) -> bool:
     return any(h in text for h in BLEEDING_HINTS)
 
 
-def _autopick_from_predictions(preds: pd.DataFrame) -> Optional[str]:
-    """Pick a case predicted hämorrhagisch with a subtype (so both stages show)."""
-    if preds.empty or "label" not in preds.columns:
-        return None
-    mask = (
-        preds.get("status", "").astype(str).str.strip().eq("success")
-        & preds["label"].astype(str).str.strip().str.lower().eq("hämorrhagisch")
-        & preds.get("haemorrhage_subtype", "").astype(str).str.strip().ne("")
-    )
+def _first_case_id(preds: pd.DataFrame, mask: "pd.Series") -> Optional[str]:
     hits = preds[mask]
     if hits.empty:
         return None
     return str(hits.iloc[0].get("case_id", "")).strip() or None
+
+
+def _autopick_from_predictions(preds: pd.DataFrame) -> Optional[str]:
+    """
+    Pick a *correct* hämorrhagisch case (true positive) with a subtype, so both
+    stages show and the demo never displays a misclassification. Falls back to any
+    hämorrhagisch+subtype case if the reference label is unavailable.
+    """
+    if preds.empty or "label" not in preds.columns:
+        return None
+    base = (
+        preds.get("status", "").astype(str).str.strip().eq("success")
+        & preds["label"].astype(str).str.strip().str.lower().eq("hämorrhagisch")
+        & preds.get("haemorrhage_subtype", "").astype(str).str.strip().ne("")
+    )
+    if "reference_label_status" in preds.columns:
+        correct = base & preds["reference_label_status"].astype(str).str.strip().str.lower().eq(
+            "hemorrhagic"
+        )
+        picked = _first_case_id(preds, correct)
+        if picked:
+            return picked
+    return _first_case_id(preds, base)
 
 
 def _select_case(
